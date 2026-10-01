@@ -43,7 +43,7 @@ func TestManagerLeavesGrokModesUnmanagedWhenAgentReportsNoModes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _, _ = manager.Cancel(context.Background(), spawned.SessionID) }()
+	defer manager.Close()
 	status, err := manager.Status(spawned.SessionID)
 	if err != nil {
 		t.Fatal(err)
@@ -69,7 +69,7 @@ func TestManagerStartsGrokModelWithRulesAndSetsAdvertisedEffort(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _, _ = manager.Cancel(context.Background(), spawned.SessionID) }()
+	defer manager.Close()
 
 	raw, err := os.ReadFile(requestLog)
 	if err != nil {
@@ -208,5 +208,5 @@ func TestManagerRebuildsPromptExtensionsWhenResumingGrokLoopRun(t *testing.T) {
 	if _, err := second.Wait(ctx, acp.WaitRequest{Session: spawned.SessionID, Timeout: 10 * time.Second}); err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _, _ = second.Cancel(context.Background(), spawned.SessionID) }()
+	defer second.Close()
 }

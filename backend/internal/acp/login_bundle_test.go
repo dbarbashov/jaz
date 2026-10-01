@@ -41,7 +41,7 @@ func TestAgentLoginInvocationForUsesBundledClaude(t *testing.T) {
 	// claude is not on PATH, so a Node-free backend can sign in.
 	bundle := t.TempDir()
 	want := writeExecutable(t, bundle, "claude")
-	inv := AgentLoginInvocationFor(AgentClaude, t.TempDir(), AgentAuthConfig{}, bundle)
+	inv := AgentLoginInvocationFor(AgentClaude, t.TempDir(), AgentAuthConfig{}, bundle, nil)
 	if !inv.Available {
 		t.Fatalf("expected bundled claude login to be available, reason=%q", inv.Reason)
 	}
@@ -57,7 +57,7 @@ func TestAgentLoginInvocationForUsesBundledKimi(t *testing.T) {
 	bundle := t.TempDir()
 	want := writeExecutable(t, bundle, "kimi")
 	root := t.TempDir()
-	inv := AgentLoginInvocationFor(AgentKimi, root, AgentAuthConfig{}, bundle)
+	inv := AgentLoginInvocationFor(AgentKimi, root, AgentAuthConfig{}, bundle, nil)
 	if !inv.Available || inv.Executable != want {
 		t.Fatalf("Kimi login invocation = %#v", inv)
 	}
@@ -78,7 +78,7 @@ func TestAgentLoginInvocationForCodexBundleWithoutLoginCLI(t *testing.T) {
 	if _, err := ResolveExecutable("codex"); err == nil {
 		t.Skip("codex is installed on PATH in this environment")
 	}
-	inv := AgentLoginInvocationFor(AgentCodex, t.TempDir(), AgentAuthConfig{}, bundle)
+	inv := AgentLoginInvocationFor(AgentCodex, t.TempDir(), AgentAuthConfig{}, bundle, nil)
 	if inv.Available {
 		t.Fatal("expected codex login to be unavailable without a bundled or PATH codex CLI")
 	}

@@ -32,6 +32,7 @@ const AUTH_PROVIDERS: Record<string, string> = {
   grok: 'xAI',
   opencode: 'OpenRouter',
   antigravity: 'Google AI',
+  muse: 'Meta',
 }
 
 export function authProviderLabel(value: string | undefined): string {
@@ -46,6 +47,7 @@ const ONBOARDING_NAMES: Record<string, string> = {
   claude: 'Claude Code',
   kimi: 'Kimi Code',
   antigravity: 'Antigravity',
+  muse: 'Muse Code',
 }
 
 export function onboardingAgentLabel(value: string | undefined): string {

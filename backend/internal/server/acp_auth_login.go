@@ -85,7 +85,7 @@ func (s *Server) handleStartACPAuthLogin(w http.ResponseWriter, r *http.Request)
 	probeCfg := cfg
 	probeCfg.Auth = auth
 	auth = acp.ProbeAgentAuth(agent, probeCfg, s.runtimeRoot(), nil).RecommendedAuth
-	invocation := acp.AgentLoginInvocationFor(agent, s.runtimeRoot(), auth, cfg.LoginBinDir)
+	invocation := acp.AgentLoginInvocationFor(agent, s.runtimeRoot(), auth, cfg.LoginBinDir, cfg.Env)
 	if !invocation.Available {
 		writeError(w, http.StatusBadRequest, fmt.Errorf("%s", invocation.Reason))
 		return

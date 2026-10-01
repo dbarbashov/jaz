@@ -26,6 +26,12 @@ func ProbeReadinessWithProviders(name string, cfg AgentConfig, root string, env 
 	if strings.TrimSpace(cfg.URL) != "" {
 		return Readiness{Available: true}
 	}
+	if name == AgentMuse {
+		probeEnv := NewManager(nil, Config{Root: root, Env: env}, nil).probeEnv(name, cfg)
+		if _, err := museExecutable(probeEnv); err != nil {
+			return Readiness{Reason: "Muse Code executable (muse) not found"}
+		}
+	}
 	if strings.TrimSpace(cfg.ManagedAdapter) != "" {
 		auth := ProbeAgentAuthWithProviders(name, cfg, root, env, providers)
 		if !auth.Authenticated {
@@ -59,7 +65,7 @@ func ProbeReadinessWithProviders(name string, cfg AgentConfig, root string, env 
 		if !auth.Authenticated {
 			return Readiness{Reason: auth.Reason}
 		}
-	case AgentKimi, AgentGrok, AgentOpenCode, AgentAntigravity:
+	case AgentKimi, AgentGrok, AgentOpenCode, AgentAntigravity, AgentMuse:
 		if !auth.Authenticated {
 			return Readiness{Reason: auth.Reason}
 		}

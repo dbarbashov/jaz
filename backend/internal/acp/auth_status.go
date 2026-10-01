@@ -64,7 +64,7 @@ func ProbeAgentAuthWithProviders(name string, cfg AgentConfig, root string, env 
 	}
 	probeEnv := NewManager(nil, Config{Root: root, Env: env, Providers: providers}, nil).probeEnv(name, cfg)
 	resolved := resolveAgentAuthWithProviders(name, cfg, root, probeEnv, providers)
-	status := agentLoginCommand(name, root, resolved.Config, loginBinDirs(cfg))
+	status := agentLoginCommand(name, root, resolved.Config, loginBinDirs(cfg), probeEnv)
 	status.RefreshOwner = RefreshOwnerAgentCLI
 	status.StoragePath = resolved.StoragePath
 	status.Authenticated = resolved.Authenticated
@@ -83,8 +83,8 @@ func ProbeAgentAuthWithProviders(name string, cfg AgentConfig, root string, env 
 	return status
 }
 
-func agentLoginCommand(name, root string, auth AgentAuthConfig, binDir string) AgentAuthStatus {
-	invocation := AgentLoginInvocationFor(name, root, auth, binDir)
+func agentLoginCommand(name, root string, auth AgentAuthConfig, binDir string, env map[string]string) AgentAuthStatus {
+	invocation := AgentLoginInvocationFor(name, root, auth, binDir, env)
 	return AgentAuthStatus{
 		LoginCommand:          invocation.Display,
 		LoginCommandAvailable: invocation.Available,
@@ -93,7 +93,7 @@ func agentLoginCommand(name, root string, auth AgentAuthConfig, binDir string) A
 }
 
 // AgentLoginInvocationFor builds an agent's login command; binDir is searched before PATH.
-func AgentLoginInvocationFor(name, root string, auth AgentAuthConfig, binDir string) AgentLoginInvocation {
+func AgentLoginInvocationFor(name, root string, auth AgentAuthConfig, binDir string, env map[string]string) AgentLoginInvocation {
 	layout := runtimefiles.New(root)
 	switch CanonicalAgentName(name) {
 	case AgentCodex:
@@ -107,6 +107,9 @@ func AgentLoginInvocationFor(name, root string, auth AgentAuthConfig, binDir str
 		return loginInvocation(map[string]string{"KIMI_CODE_HOME": home}, false, binDir, "kimi", "login")
 	case AgentGrok:
 		return loginInvocation(nil, true, binDir, "grok", "login", "--device-auth")
+	case AgentMuse:
+		probeEnv := NewManager(nil, Config{Root: root, Env: env}, nil).probeEnv(name, AgentConfig{})
+		return museLoginInvocation(probeEnv)
 	case AgentAntigravity:
 		logFile := filepath.Join(root, "acp", "agy-login-"+randomHex(4)+".log")
 		invocation := loginInvocation(nil, true, binDir, "agy",

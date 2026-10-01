@@ -5,7 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/signal"
+	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -17,6 +20,14 @@ import (
 func TestFakeACPAgentProcess(t *testing.T) {
 	if os.Getenv("JAZ_FAKE_ACP_AGENT") != "1" {
 		return
+	}
+	if path := os.Getenv("JAZ_FAKE_ACP_MUSE_CONFIG_CAPTURE"); path != "" {
+		if err := os.WriteFile(path, []byte(os.Getenv("XDG_CONFIG_HOME")), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if os.Getenv("JAZ_FAKE_ACP_MUSE_SHUTDOWN_CAPTURE") != "" {
+		signal.Ignore(syscall.SIGTERM)
 	}
 	_, authErr := os.Stat(os.Getenv("JAZ_FAKE_ACP_AUTH_REQUIRED_FILE"))
 	authRequired := authErr == nil
@@ -75,6 +86,16 @@ func TestFakeACPAgentProcess(t *testing.T) {
 	for {
 		msg, err := conn.Receive(context.Background())
 		if err != nil {
+			if path := os.Getenv("JAZ_FAKE_ACP_MUSE_SHUTDOWN_CAPTURE"); path != "" {
+				time.Sleep(25 * time.Millisecond)
+				rules, err := os.ReadFile(filepath.Join(os.Getenv("XDG_CONFIG_HOME"), "muse", "AGENTS.md"))
+				if err != nil {
+					rules = []byte(err.Error())
+				}
+				if err := os.WriteFile(path, rules, 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
 			os.Exit(0)
 		}
 		logFakeACPRequest(t, msg)
@@ -372,6 +393,13 @@ func TestFakeACPAgentProcess(t *testing.T) {
 			pendingPrompt = nil
 			sendResult(conn, msg, map[string]any{"outcome": "injected", "stopReason": "end_turn"})
 		case "session/prompt":
+			if os.Getenv("JAZ_FAKE_ACP_MUSE_WRITE_CONFIG") == "1" {
+				for _, name := range []string{"auth.json", "trust.json", ".auth.json.lock", ".trust.json.lock", ".settings.json.lock"} {
+					if err := os.WriteFile(filepath.Join(os.Getenv("XDG_CONFIG_HOME"), "muse", name), []byte("native state"), 0o600); err != nil {
+						t.Fatal(err)
+					}
+				}
+			}
 			if os.Getenv("JAZ_FAKE_ACP_PROMPT_DELAY") == "1" {
 				time.Sleep(200 * time.Millisecond)
 			}
