@@ -1,4 +1,12 @@
 declare module '*.css'
+declare module '*.svg' {
+  const url: string
+  export default url
+}
+declare module '*.png' {
+  const url: string
+  export default url
+}
 declare module '@fontsource-variable/inter'
 declare module '@fontsource-variable/jetbrains-mono'
 
