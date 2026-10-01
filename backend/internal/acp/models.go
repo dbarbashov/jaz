@@ -107,6 +107,10 @@ var openCodeReasoningEffortOptions = append(append([]ReasoningEffortOption(nil),
 	ReasoningEffortOption{Value: "max", Label: "Max"},
 )
 
+var museReasoningEffortOptions = append(append([]ReasoningEffortOption(nil), codexReasoningEffortOptions...),
+	ReasoningEffortOption{Value: "none", Label: "None"},
+)
+
 func agentPolicyForAgent(agentName string) agentPolicy {
 	switch strings.ToLower(strings.TrimSpace(agentName)) {
 	case AgentClaude:
@@ -153,6 +157,13 @@ func agentPolicyForAgent(agentName string) agentPolicy {
 	case AgentAntigravity:
 		return agentPolicy{
 			modelConfigID: sessionConfigModel,
+		}
+	case AgentMuse:
+		return agentPolicy{
+			modelConfigID:        sessionConfigModel,
+			effortConfigID:       sessionConfigReasoningEffort,
+			systemPromptAtLaunch: true,
+			effortOptions:        museReasoningEffortOptions,
 		}
 	default:
 		return agentPolicy{
@@ -207,7 +218,7 @@ func (p agentPolicy) normalizeReasoningEffort(value string) (string, error) {
 		return value, nil
 	}
 	value = strings.ToLower(value)
-	if value == "none" {
+	if value == "none" && !p.supportsReasoningEffort(value) {
 		value = ""
 	}
 	for _, option := range p.effortOptions {
@@ -253,7 +264,7 @@ func (p agentPolicy) mergeSessionMeta(meta map[string]any, cfg AgentConfig) map[
 func reasoningEffortValues(options []ReasoningEffortOption) []string {
 	values := []string{"none"}
 	for _, option := range options {
-		if option.Value != "" {
+		if option.Value != "" && option.Value != "none" {
 			values = append(values, option.Value)
 		}
 	}

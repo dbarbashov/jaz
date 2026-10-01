@@ -18,6 +18,11 @@ func TestFakeACPAgentProcess(t *testing.T) {
 	if os.Getenv("JAZ_FAKE_ACP_AGENT") != "1" {
 		return
 	}
+	if path := os.Getenv("JAZ_FAKE_ACP_MUSE_CONFIG_CAPTURE"); path != "" {
+		if err := os.WriteFile(path, []byte(os.Getenv("XDG_CONFIG_HOME")), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
 	_, authErr := os.Stat(os.Getenv("JAZ_FAKE_ACP_AUTH_REQUIRED_FILE"))
 	authRequired := authErr == nil
 	if path := os.Getenv("JAZ_FAKE_ACP_START_LOG"); path != "" {

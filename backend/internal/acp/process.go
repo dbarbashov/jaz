@@ -132,6 +132,11 @@ func (m *Manager) openConn(ctx context.Context, name string, cfg AgentConfig, en
 			return nil, nil, err
 		}
 	}
+	if CanonicalAgentName(name) == AgentMuse {
+		if err := configureMusePrompt(ctx, env, systemPrompt); err != nil {
+			return nil, nil, err
+		}
+	}
 	command, args := launchCommand(cfg.Command, cfg.Args)
 	addCommandDirToPath(env, command)
 	cmd := exec.CommandContext(ctx, command, args...)
@@ -293,6 +298,21 @@ func (m *Manager) buildProcessEnv(ctx context.Context, name string, agent AgentC
 	normalizeEnv(env, "GEMINI_API_KEY", "GEMINI_APIKEY")
 
 	root := firstNonEmpty(m.cfg.Root, filepath.Join(os.TempDir(), "jaz"))
+	if name == AgentMuse {
+		processenv.PreserveHost(env, "META_API_KEY", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "LANG", "LC_ALL", "LC_CTYPE")
+		for _, binding := range os.Environ() {
+			key, value, _ := strings.Cut(binding, "=")
+			if strings.HasPrefix(key, "MUSE_") && env[key] == "" {
+				env[key] = value
+			}
+		}
+		if command, err := museExecutable(env); err == nil {
+			env["MUSE_CLI"] = command
+		}
+		if value, ok := explicitAgentAPIKey(name, root, env); ok {
+			env["META_API_KEY"] = value
+		}
+	}
 	if name == AgentCodex {
 		delete(env, codexModelMetadataEnv)
 		providers := m.providers()

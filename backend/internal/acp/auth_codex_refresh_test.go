@@ -56,6 +56,9 @@ func (r refreshAdapter) ResolveAdapter(context.Context, string) (AdapterLaunch, 
 }
 
 func TestMain(m *testing.M) {
+	if dir := os.Getenv("JAZ_TEST_MUSE_CLI"); dir != "" {
+		os.Exit(runFakeMuseCLI(dir))
+	}
 	dir := os.Getenv("JAZ_TEST_CODEX_REFRESH")
 	if dir == "" {
 		os.Exit(m.Run())

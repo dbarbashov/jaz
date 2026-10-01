@@ -20,6 +20,7 @@ const (
 	AgentGrok        = "grok"
 	AgentOpenCode    = "opencode"
 	AgentAntigravity = "antigravity"
+	AgentMuse        = "muse"
 
 	AgentProviderModeNone          = ""
 	AgentProviderModeAgentDefaults = "agent_defaults"
@@ -281,6 +282,7 @@ var builtinAgentOrder = []string{
 	AgentGrok,
 	AgentOpenCode,
 	AgentAntigravity,
+	AgentMuse,
 }
 
 func BuiltinAgents() AgentCatalog {
@@ -318,6 +320,9 @@ func BuiltinAgents() AgentCatalog {
 			ManagedAdapterArgs:    []string{"--auth=auto", "--dangerously-skip-permissions"},
 			ManagedTool:           "antigravity-cli",
 			ManagedToolAdapterArg: "--agy",
+		},
+		AgentMuse: {
+			Command: "muse-acp",
 		},
 	}
 }
