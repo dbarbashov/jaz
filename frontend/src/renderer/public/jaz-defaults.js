@@ -11,7 +11,7 @@ window.__JAZ_DEFAULTS__ = {
   // fontScale: 1,                 // 0.9 | 1 | 1.1 | 1.25
   // effects: true,                // decorative motion (composer glow, shimmer)
   // wideLayout: false,            // wider thread column
-  // showModelIcons: true,         // ACP agent/model marks in the left sidebar
+  // showModelIcons: false,        // ACP agent/model marks in the left sidebar
   // homeWordmark: 'jaz',          // name or image URL above the new-thread composer
   // invertHomeLogoInLightMode: false, // darkens white image logos in light mode
   // invertHomeLogoInDarkMode: false, // lightens black image logos in dark mode

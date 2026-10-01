@@ -40,7 +40,7 @@ export const DEFAULTS: AppearanceSettings = {
   inlineDiffs: false,
   inlineShellCommands: false,
   wideLayout: false,
-  showModelIcons: true,
+  showModelIcons: false,
   homeWordmark: '',
   invertHomeLogoInLightMode: false,
   invertHomeLogoInDarkMode: false,
