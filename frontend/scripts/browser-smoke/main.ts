@@ -17,6 +17,7 @@ import { exerciseBrowserPopups } from './popups'
 
 app.setName('Jaz')
 app.setPath('userData', join(process.env.JAZ_BROWSER_SMOKE_DIR!, `profile-${process.pid}`))
+app.commandLine.appendSwitch('host-resolver-rules', 'MAP linkedin.com 127.0.0.1, MAP www.linkedin.com 127.0.0.1')
 const timeout = Number(process.env.JAZ_BROWSER_SMOKE_TIMEOUT_MS || 30000)
 const openedURLs: string[] = []
 const popupURLs: string[] = []
@@ -155,10 +156,18 @@ server.listen(0, '127.0.0.1', async () => {
   const cert = await readFile(join(process.env.JAZ_BROWSER_SMOKE_DIR!, 'cert.pem'))
   const fingerprint = new X509Certificate(cert).fingerprint256
   session.fromPartition(PREVIEW_PARTITION).setCertificateVerifyProc(({ hostname, certificate }, callback) => {
-    callback(hostname === 'localhost' && new X509Certificate(certificate.data).fingerprint256 === fingerprint ? 0 : -3)
+    callback(['localhost', 'linkedin.com', 'www.linkedin.com'].includes(hostname) && new X509Certificate(certificate.data).fingerprint256 === fingerprint ? 0 : -3)
   })
   const secureServer = createSecureServer({ cert, key: await readFile(join(process.env.JAZ_BROWSER_SMOKE_DIR!, 'key.pem')) }, async (request, response) => {
     response.setHeader('Content-Type', 'text/html')
+    const url = new URL(request.url!, `https://${request.headers.host}`)
+    if (['linkedin.com', 'www.linkedin.com'].includes(url.hostname) || request.url === '/?blocked') {
+      const signIn = request.url === '/login'
+      const allowed = request.url === '/?allowed'
+      response.writeHead(signIn || allowed ? 200 : 403)
+      response.end(`<h1>${signIn ? 'LinkedIn sign in' : allowed ? 'LinkedIn feed' : 'Blocked'}</h1>`)
+      return
+    }
     if (request.method === 'POST') {
       request.resume()
       response.writeHead(303, { Location: '/welcome' })

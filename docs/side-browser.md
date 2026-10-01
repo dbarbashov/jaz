@@ -136,6 +136,14 @@ page can leave the rejection screen displayed. This attempts to reuse the
 existing session; Google may still require authentication in a supported browser.
 Signing in externally alone does not update Jaz's separate cookie partition.
 
+### LinkedIn
+
+LinkedIn's public homepage can return a Cloudflare block even while its sign-in
+page works. When a top-level GET of that homepage returns HTTP 403, Jaz redirects
+the same tab to LinkedIn's `/login` page. Sign in there to enter the feed.
+Successful homepage responses, other paths and background requests keep their
+original behavior.
+
 ### Codex Desktop browser runtime
 
 Inspection on September 12, 2026 of the installed Codex Desktop build
@@ -173,7 +181,7 @@ The app's own session keeps its identity. Chromium continues to generate client
 hints, language, fetch metadata, cookies and other request headers itself; page
 and worker JavaScript observe the same User-Agent as network requests.
 This uses [Electron's session API](https://www.electronjs.org/docs/latest/api/session#sessetuseragentuseragent-acceptlanguages)
-without per-request header rewriting or browser-property patches.
+without per-request identity rewriting or browser-property patches.
 
 This improves browser compatibility. A browser identity does not establish that
 a person performed an action, and cannot guarantee that a site allows automation

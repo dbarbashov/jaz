@@ -32,4 +32,16 @@ export function configurePreviewSession(): void {
     .replace(` ${appProduct}`, '')
     .replace(` Electron/${process.versions.electron}`, '')
   browser.setUserAgent(userAgent)
+  browser.webRequest.onHeadersReceived({ urls: ['https://linkedin.com/*', 'https://www.linkedin.com/*'] }, (details, callback) => {
+    const url = new URL(details.url)
+    // LinkedIn's guest homepage can be blocked while its sign-in route remains available.
+    if (details.resourceType === 'mainFrame' && details.method === 'GET' && details.statusCode === 403 && url.pathname === '/') {
+      callback({
+        statusLine: 'HTTP/1.1 302 Found',
+        responseHeaders: { ...details.responseHeaders, Location: [new URL('/login', url).href] },
+      })
+    } else {
+      callback({})
+    }
+  })
 }
