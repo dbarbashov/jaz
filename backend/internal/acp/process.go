@@ -91,7 +91,7 @@ func withProcessStderr(err error, stderr *processStderrTail) error {
 	return err
 }
 
-func (m *Manager) openConn(ctx context.Context, name string, cfg AgentConfig, env map[string]string, cwd, systemPrompt string) (jsonrpc.MessageConn, *processStderrTail, error) {
+func (m *Manager) openConn(ctx context.Context, name string, cfg AgentConfig, env map[string]string, cwd, systemPrompt string) (connection jsonrpc.MessageConn, tail *processStderrTail, err error) {
 	if err := validateAgentLaunch(name, cfg); err != nil {
 		return nil, nil, err
 	}
@@ -132,11 +132,18 @@ func (m *Manager) openConn(ctx context.Context, name string, cfg AgentConfig, en
 			return nil, nil, err
 		}
 	}
+	cleanup := func() {}
 	if CanonicalAgentName(name) == AgentMuse {
-		if err := configureMusePrompt(ctx, env, systemPrompt); err != nil {
+		cleanup, err = configureMusePrompt(env, systemPrompt)
+		if err != nil {
 			return nil, nil, err
 		}
 	}
+	defer func() {
+		if err != nil {
+			cleanup()
+		}
+	}()
 	command, args := launchCommand(cfg.Command, cfg.Args)
 	addCommandDirToPath(env, command)
 	cmd := exec.CommandContext(ctx, command, args...)
@@ -170,6 +177,7 @@ func (m *Manager) openConn(ctx context.Context, name string, cfg AgentConfig, en
 	go func() {
 		waitErr := cmd.Wait()
 		_ = process.terminate()
+		cleanup()
 		stderr.close(waitErr)
 		_ = conn.Close()
 	}()
@@ -299,19 +307,7 @@ func (m *Manager) buildProcessEnv(ctx context.Context, name string, agent AgentC
 
 	root := firstNonEmpty(m.cfg.Root, filepath.Join(os.TempDir(), "jaz"))
 	if name == AgentMuse {
-		processenv.PreserveHost(env, "META_API_KEY", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "LANG", "LC_ALL", "LC_CTYPE")
-		for _, binding := range os.Environ() {
-			key, value, _ := strings.Cut(binding, "=")
-			if strings.HasPrefix(key, "MUSE_") && env[key] == "" {
-				env[key] = value
-			}
-		}
-		if command, err := museExecutable(env); err == nil {
-			env["MUSE_CLI"] = command
-		}
-		if value, ok := explicitAgentAPIKey(name, root, env); ok {
-			env["META_API_KEY"] = value
-		}
+		prepareMuseEnv(root, env)
 	}
 	if name == AgentCodex {
 		delete(env, codexModelMetadataEnv)

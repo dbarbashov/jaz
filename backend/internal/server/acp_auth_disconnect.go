@@ -78,7 +78,7 @@ func (s *Server) handleDisconnectACPAuth(w http.ResponseWriter, r *http.Request)
 		writeError(w, http.StatusInternalServerError, fmt.Errorf("antigravity is still signed in after removing its credentials; sign out with the agy CLI and reconnect"))
 		return
 	}
-	if agent == acp.AgentMuse && response.ACPAuth[agent].Authenticated {
+	if agent == acp.AgentMuse && response.ACPAuth[agent].Authenticated && response.ACPAuth[agent].AuthKind != acp.AuthKindNone {
 		writeError(w, http.StatusBadRequest, fmt.Errorf("Muse is signed in through META_API_KEY; remove the environment variable to disconnect"))
 		return
 	}

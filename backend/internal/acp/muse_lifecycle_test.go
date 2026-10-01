@@ -52,6 +52,7 @@ func TestMuseSessionPreservesNativeConfigAndJazInstructionsOnReload(t *testing.T
 								"XDG_CONFIG_HOME":                  filepath.Dir(config),
 								"JAZ_FAKE_ACP_AGENT":               "1",
 								"JAZ_FAKE_ACP_MUSE_CONFIG_CAPTURE": capture,
+								"JAZ_FAKE_ACP_MUSE_WRITE_CONFIG":   "1",
 								"JAZ_FAKE_ACP_REQUEST_LOG":         requestLog,
 								"JAZ_FAKE_ACP_RESUME":              "1",
 								"JAZ_FAKE_ACP_MODELS":              "fake-large",
@@ -93,13 +94,6 @@ func TestMuseSessionPreservesNativeConfigAndJazInstructionsOnReload(t *testing.T
 					t.Fatalf("native settings = %q, %v", settings, err)
 				}
 				manager.Close()
-				deadline := time.Now().Add(time.Second)
-				for time.Now().Before(deadline) {
-					if _, err := os.Stat(string(view)); os.IsNotExist(err) {
-						break
-					}
-					time.Sleep(time.Millisecond)
-				}
 				if _, err := os.Stat(string(view)); !os.IsNotExist(err) {
 					t.Fatalf("Muse configuration view survived Close: %v", err)
 				}
@@ -110,6 +104,12 @@ func TestMuseSessionPreservesNativeConfigAndJazInstructionsOnReload(t *testing.T
 			rules, err := os.ReadFile(filepath.Join(config, rulesName))
 			if err != nil || string(rules) != "native rules" {
 				t.Fatalf("native rules changed: %q, %v", rules, err)
+			}
+			for _, name := range []string{"auth.json", "trust.json", ".auth.json.lock", ".trust.json.lock", ".settings.json.lock"} {
+				data, err := os.ReadFile(filepath.Join(config, name))
+				if err != nil || string(data) != "native state" {
+					t.Fatalf("native config save did not reach its original profile (%s): %q, %v", name, data, err)
+				}
 			}
 			requests, err := os.ReadFile(requestLog)
 			if err != nil {

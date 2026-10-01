@@ -520,19 +520,7 @@ func DisconnectAgentAuth(ctx context.Context, name string, cfg AgentConfig, root
 	if CanonicalAgentName(name) != AgentMuse {
 		return RemoveOwnedCredential(name, storagePath, root)
 	}
-	env := NewManager(nil, Config{Root: root}, nil).probeEnv(name, cfg)
-	command, err := museExecutable(env)
-	if err != nil {
-		return err
-	}
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, command, "logout")
-	cmd.Env = processenv.List(env)
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("Muse sign out: %w", err)
-	}
-	return nil
+	return disconnectMuseAuth(ctx, cfg, root)
 }
 
 // pathUnderRoot resolves symlinks before comparing so a symlinked directory

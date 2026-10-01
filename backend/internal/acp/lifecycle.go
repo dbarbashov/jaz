@@ -2,6 +2,7 @@ package acp
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	"github.com/gluonfield/acp-transport/jsonrpc"
@@ -42,6 +43,9 @@ func (p *agentProcess) close() {
 	if p.cancel != nil {
 		p.cancel()
 	}
+	if p.stderr != nil {
+		<-p.stderr.done
+	}
 }
 
 func (m *Manager) Close() {
@@ -80,9 +84,11 @@ func (m *Manager) Close() {
 		}
 	}
 	m.log.Info("acp manager closing", "jobs", len(jobs), "active_turns", activeTurns, "processes", len(processes))
+	var closing sync.WaitGroup
 	for _, process := range processes {
-		process.close()
+		closing.Go(process.close)
 	}
+	closing.Wait()
 	for i, job := range jobs {
 		if turns[i] != nil {
 			<-turns[i]

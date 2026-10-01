@@ -3,8 +3,12 @@ package acp
 import (
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
+	"time"
+
+	"github.com/wins/jaz/backend/internal/processenv"
 )
 
 func TestMuseNativeAccountLoginAndDisconnect(t *testing.T) {
@@ -23,9 +27,12 @@ func TestMuseNativeAccountLoginAndDisconnect(t *testing.T) {
 		"MUSE_CLI":          relativeExecutable,
 		"MUSE_CHANNEL":      "test-channel",
 		"MUSE_AUTH_PATH":    filepath.Join(root, "native-auth.json"),
-		"JAZ_TEST_MUSE_CLI": root,
+		"MUSE_JAZ_TEST_CLI": root,
 		"XDG_CONFIG_HOME":   root,
 		"META_API_KEY":      "",
+		"HTTP_PROXY":        "http://muse-proxy.invalid:8080",
+		"LANG":              "C",
+		"PATH":              filepath.Dir(executable),
 	}}
 	t.Setenv("META_API_KEY", "")
 	t.Setenv("JAZ_ACP_MUSE_API_KEY", "")
@@ -42,9 +49,13 @@ func TestMuseNativeAccountLoginAndDisconnect(t *testing.T) {
 		if err := os.WriteFile(accountFile, []byte(state.account), 0o600); err != nil {
 			t.Fatal(err)
 		}
+		_ = os.Remove(filepath.Join(root, "probe-closed"))
 		status := ProbeAgentAuth(AgentMuse, cfg, root, nil)
 		if status.Authenticated != state.authenticated || status.AuthKind != state.kind || !status.LoginCommandAvailable {
 			t.Fatalf("native account %s => %#v", state.account, status)
+		}
+		if _, err := os.Stat(filepath.Join(root, "probe-closed")); err != nil {
+			t.Fatalf("account probe terminated before native shutdown: %v", err)
 		}
 	}
 	invocation := AgentLoginInvocationFor(AgentMuse, root, AgentAuthConfig{}, "", cfg.Env)
@@ -59,11 +70,23 @@ func TestMuseNativeAccountLoginAndDisconnect(t *testing.T) {
 			t.Fatalf("native environment value created a profile directory: %s, %v", name, err)
 		}
 	}
+	cmd := exec.CommandContext(t.Context(), invocation.Executable, invocation.Args...)
+	cmd.Env = processenv.List(invocation.Env)
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("native login rejected its environment: %v", err)
+	}
+	if status := ProbeAgentAuth(AgentMuse, cfg, root, nil); !status.Authenticated || status.AuthKind != AuthKindOAuth {
+		t.Fatalf("native login was not available to the runtime: %#v", status)
+	}
 	if err := DisconnectAgentAuth(t.Context(), AgentMuse, cfg, root, ""); err != nil {
 		t.Fatal(err)
 	}
 	if status := ProbeAgentAuth(AgentMuse, cfg, root, nil); status.Authenticated {
 		t.Fatalf("Muse remained signed in: %#v", status)
+	}
+	cfg.Env["MUSE_CLI"] = filepath.Base(executable)
+	if status := ProbeAgentAuth(AgentMuse, cfg, root, nil); !status.LoginCommandAvailable || status.Authenticated {
+		t.Fatalf("native executable was not resolved through the configured PATH: %#v", status)
 	}
 }
 
@@ -72,6 +95,15 @@ func runFakeMuseCLI(root string) int {
 		return 2
 	}
 	accountFile := filepath.Join(root, "account.json")
+	if os.Args[1] == "login" {
+		if os.Getenv("HTTP_PROXY") != "http://muse-proxy.invalid:8080" || os.Getenv("LANG") != "C" || os.Getenv("PATH") != filepath.Dir(os.Args[0]) {
+			return 9
+		}
+		if err := os.WriteFile(accountFile, []byte("{\"state\":\"accountLogin\",\"credentialRequired\":true}"), 0o600); err != nil {
+			return 10
+		}
+		return 0
+	}
 	if os.Args[1] == "logout" {
 		if err := os.WriteFile(accountFile, []byte("{\"state\":\"loggedOut\",\"credentialRequired\":true}"), 0o600); err != nil {
 			return 3
@@ -109,6 +141,10 @@ func runFakeMuseCLI(root string) int {
 	var extra json.RawMessage
 	if decoder.Decode(&extra) == nil {
 		return 8
+	}
+	time.Sleep(10 * time.Millisecond)
+	if err := os.WriteFile(filepath.Join(root, "probe-closed"), []byte("closed"), 0o600); err != nil {
+		return 11
 	}
 	return 0
 }

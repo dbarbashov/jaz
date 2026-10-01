@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
@@ -16,31 +17,70 @@ import (
 )
 
 func museExecutable(env map[string]string) (string, error) {
-	if command := strings.TrimSpace(env["MUSE_CLI"]); command != "" {
-		resolved, err := ResolveExecutable(command)
+	command := strings.TrimSpace(env["MUSE_CLI"])
+	pathList := env["PATH"]
+	if command == "" {
+		command = "muse"
+		dir := env["MUSE_INSTALL_DIR"]
+		if dir == "" {
+			dir = filepath.Join(env["HOME"], ".local", "bin")
+			if runtime.GOOS == "windows" {
+				dir = filepath.Join(env["LOCALAPPDATA"], "Programs", "muse")
+			}
+		}
+		pathList += string(os.PathListSeparator) + dir
+	}
+	if strings.ContainsAny(command, `/\`) {
+		resolved, err := filepath.Abs(command)
 		if err != nil {
 			return "", err
 		}
-		return filepath.Abs(resolved)
+		command = resolved
 	}
-	if command, err := executableInPath("muse", env["PATH"]); err == nil {
-		return filepath.Abs(command)
+	resolved, err := executableInPath(command, pathList)
+	if err != nil {
+		return "", err
 	}
-	dir := env["MUSE_INSTALL_DIR"]
-	if dir == "" {
-		dir = filepath.Join(env["HOME"], ".local", "bin")
-		if runtime.GOOS == "windows" {
-			dir = filepath.Join(env["LOCALAPPDATA"], "Programs", "muse")
+	return filepath.Abs(resolved)
+}
+
+func prepareMuseEnv(root string, env map[string]string) {
+	processenv.PreserveHost(env, "META_API_KEY", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "LANG", "LC_ALL", "LC_CTYPE")
+	for _, binding := range os.Environ() {
+		key, value, _ := strings.Cut(binding, "=")
+		if strings.HasPrefix(key, "MUSE_") && env[key] == "" {
+			env[key] = value
 		}
 	}
-	return resolveLoginExecutable(dir, "muse")
+	if command, err := museExecutable(env); err == nil {
+		env["MUSE_CLI"] = command
+	}
+	if value, ok := explicitAgentAPIKey(AgentMuse, root, env); ok {
+		env["META_API_KEY"] = value
+	}
+}
+
+func disconnectMuseAuth(ctx context.Context, cfg AgentConfig, root string) error {
+	env := NewManager(nil, Config{Root: root}, nil).probeEnv(AgentMuse, cfg)
+	command, err := museExecutable(env)
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, command, "logout")
+	cmd.Env = processenv.List(env)
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("Muse sign out: %w", err)
+	}
+	return nil
 }
 
 func museLoginInvocation(env map[string]string) AgentLoginInvocation {
 	invocation := AgentLoginInvocation{
-		Args:        []string{"login"},
-		Display:     "muse login",
-		InheritHome: true,
+		Env:     env,
+		Args:    []string{"login"},
+		Display: "muse login",
 	}
 	command, err := museExecutable(env)
 	invocation.Available = err == nil
@@ -50,13 +90,6 @@ func museLoginInvocation(env map[string]string) AgentLoginInvocation {
 	}
 	invocation.Executable = command
 	invocation.Display = shellCommand(command, "login")
-	invocation.Reason = ""
-	invocation.Env = map[string]string{}
-	for key, value := range env {
-		if strings.HasPrefix(key, "MUSE_") || key == "META_API_KEY" || key == "XDG_CONFIG_HOME" || key == "XDG_DATA_HOME" {
-			invocation.Env[key] = value
-		}
-	}
 	return invocation
 }
 
@@ -109,8 +142,11 @@ func museAccountState(command string, env map[string]string) (museAccount, error
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, command, "serve")
+	prepareProcessCommand(cmd)
+	process := newProcessSupervisor(cmd)
+	cmd.Cancel = process.terminate
 	cmd.Env = processenv.List(env)
-	cmd.WaitDelay = time.Second
+	cmd.WaitDelay = processTerminateGrace + acpProcessStdioDrain
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		return museAccount{}, err
@@ -124,9 +160,13 @@ func museAccountState(command string, env map[string]string) (museAccount, error
 	}
 	defer func() {
 		_ = stdin.Close()
-		_ = cmd.Process.Kill()
 		_ = cmd.Wait()
+		_ = process.terminate()
 	}()
+	if err := process.started(); err != nil {
+		_ = process.terminate()
+		return museAccount{}, err
+	}
 	peer := jsonrpc.NewPeer(stdio.New(stdout, stdin), nil)
 	defer peer.Close()
 	go func() {

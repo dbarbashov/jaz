@@ -235,6 +235,9 @@ type agentConn struct {
 func (c *agentConn) close() {
 	_ = c.peer.Close()
 	c.cancel()
+	if c.stderr != nil {
+		<-c.stderr.done
+	}
 }
 
 func (c *agentConn) withProcessStderr(err error) error {
