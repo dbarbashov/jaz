@@ -20,7 +20,7 @@ await writeFile(join(output, 'report-icon.svg'), '<svg xmlns="http://www.w3.org/
 await writeFile(join(output, 'report.css'), 'body{font:16px system-ui;padding:24px}a{display:block;margin:20px 0}h1{color:rgb(12, 90, 50)}')
 await writeFile(join(output, 'report.js'), 'document.querySelector("output").textContent = "Relative script loaded"')
 await writeFile(join(output, 'calculator:one.html'), '<!doctype html><title>Calculator</title><h1>Cost calculator</h1>')
-execFileSync('openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-keyout', join(output, 'key.pem'), '-out', join(output, 'cert.pem'), '-days', '1', '-subj', '/CN=localhost', '-addext', 'subjectAltName=DNS:localhost'], { stdio: 'ignore' })
+execFileSync('openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-keyout', join(output, 'key.pem'), '-out', join(output, 'cert.pem'), '-days', '1', '-subj', '/CN=localhost', '-addext', 'subjectAltName=DNS:localhost,DNS:linkedin.com,DNS:www.linkedin.com'], { stdio: 'ignore' })
 const codex = process.argv.includes('--codex') ? Bun.which('codex') : ''
 if (codex === null) {
   throw new Error('Install and sign in to the Codex CLI before running this check')
@@ -82,7 +82,7 @@ const processHandle = Bun.spawn(['go', 'test', '-tags=browserintegration', './in
     JAZ_ELECTRON_BINARY: electron,
     JAZ_BROWSER_CODEX_BINARY: codex,
     JAZ_BROWSER_SMOKE_TIMEOUT_MS: codex ? '180000' : '75000',
-    JAZ_BROWSER_SMOKE_SUITE: process.argv.includes('--model-picker') ? 'model-picker' : process.argv.includes('--side-panel') ? 'side-panel' : '',
+    JAZ_BROWSER_SMOKE_SUITE: ['model-picker', 'side-panel', 'linkedin'].find(suite => process.argv.includes(`--${suite}`)) || '',
   },
   stdout: 'inherit',
   stderr: 'inherit',

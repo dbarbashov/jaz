@@ -91,7 +91,7 @@ func withProcessStderr(err error, stderr *processStderrTail) error {
 	return err
 }
 
-func (m *Manager) openConn(ctx context.Context, name string, cfg AgentConfig, env map[string]string, cwd, systemPrompt string) (jsonrpc.MessageConn, *processStderrTail, error) {
+func (m *Manager) openConn(ctx context.Context, name string, cfg AgentConfig, env map[string]string, cwd, systemPrompt string) (connection jsonrpc.MessageConn, tail *processStderrTail, err error) {
 	if err := validateAgentLaunch(name, cfg); err != nil {
 		return nil, nil, err
 	}
@@ -132,6 +132,18 @@ func (m *Manager) openConn(ctx context.Context, name string, cfg AgentConfig, en
 			return nil, nil, err
 		}
 	}
+	cleanup := func() {}
+	if CanonicalAgentName(name) == AgentMuse {
+		cleanup, err = configureMusePrompt(env, systemPrompt)
+		if err != nil {
+			return nil, nil, err
+		}
+	}
+	defer func() {
+		if err != nil {
+			cleanup()
+		}
+	}()
 	command, args := launchCommand(cfg.Command, cfg.Args)
 	addCommandDirToPath(env, command)
 	cmd := exec.CommandContext(ctx, command, args...)
@@ -165,6 +177,7 @@ func (m *Manager) openConn(ctx context.Context, name string, cfg AgentConfig, en
 	go func() {
 		waitErr := cmd.Wait()
 		_ = process.terminate()
+		cleanup()
 		stderr.close(waitErr)
 		_ = conn.Close()
 	}()
@@ -293,6 +306,9 @@ func (m *Manager) buildProcessEnv(ctx context.Context, name string, agent AgentC
 	normalizeEnv(env, "GEMINI_API_KEY", "GEMINI_APIKEY")
 
 	root := firstNonEmpty(m.cfg.Root, filepath.Join(os.TempDir(), "jaz"))
+	if name == AgentMuse {
+		prepareMuseEnv(root, env)
+	}
 	if name == AgentCodex {
 		delete(env, codexModelMetadataEnv)
 		providers := m.providers()

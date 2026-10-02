@@ -67,7 +67,7 @@ function withLoginAuth(settings: AgentSettingsData, agent: string): AgentSetting
 }
 
 function loginAuth(agent: string, current: ACPAuthDraft): ACPAuthDraft {
-  if (agent === 'antigravity') return { mode: 'existing_cli' }
+  if (agent === 'antigravity' || agent === 'muse') return { mode: 'existing_cli' }
   if (agent === 'grok' || current?.mode === 'jaz_profile') return current
   return { mode: 'jaz_profile', path: '' }
 }

@@ -66,7 +66,7 @@ func NormalizeAgentAuthConfig(name string, auth AgentAuthConfig) (AgentAuthConfi
 		return AgentAuthConfig{}, fmt.Errorf("acp agent %q auth mode %q is not supported", name, mode)
 	}
 	path := strings.TrimSpace(auth.Path)
-	if name == AgentAntigravity && mode == AuthModeJazProfile {
+	if (name == AgentAntigravity || name == AgentMuse) && mode == AuthModeJazProfile {
 		mode = AuthModeAuto
 		path = ""
 	}
@@ -80,6 +80,9 @@ func NormalizeAgentAuthConfig(name string, auth AgentAuthConfig) (AgentAuthConfi
 		if path != "" {
 			return AgentAuthConfig{}, fmt.Errorf("acp agent %q auth path is not supported because Grok has no explicit profile path", name)
 		}
+	}
+	if name == AgentMuse && path != "" {
+		return AgentAuthConfig{}, fmt.Errorf("acp agent %q has no explicit profile path; use Muse's native configuration", name)
 	}
 	return AgentAuthConfig{
 		Mode: mode,
@@ -150,6 +153,8 @@ func resolveAgentAuthWithProviders(name string, cfg AgentConfig, root string, en
 		return resolveOpenCodeAuth(auth, cfg, root, env, providers)
 	case AgentAntigravity:
 		return resolveAntigravityAuth(auth, root, env)
+	case AgentMuse:
+		return resolveMuseAuth(root, env)
 	default:
 		return resolvedAgentAuth{Config: auth}
 	}
@@ -511,6 +516,13 @@ func RemoveOwnedCredential(name, storagePath, root string) error {
 	return nil
 }
 
+func DisconnectAgentAuth(ctx context.Context, name string, cfg AgentConfig, root, storagePath string) error {
+	if CanonicalAgentName(name) != AgentMuse {
+		return RemoveOwnedCredential(name, storagePath, root)
+	}
+	return disconnectMuseAuth(ctx, cfg, root)
+}
+
 // pathUnderRoot resolves symlinks before comparing so a symlinked directory
 // inside root cannot smuggle a global credential path past the ownership check.
 func pathUnderRoot(path, root string) bool {
@@ -593,6 +605,8 @@ func resolveAgentAPIKeySpec(name string) (AgentAPIKeySpec, bool) {
 		return AgentAPIKeySpec{SourceEnv: "JAZ_ACP_GROK_API_KEY", TargetEnv: "XAI_API_KEY"}, true
 	case AgentOpenCode:
 		return AgentAPIKeySpec{SourceEnv: "JAZ_ACP_OPENCODE_API_KEY", TargetEnv: "OPENROUTER_API_KEY"}, true
+	case AgentMuse:
+		return AgentAPIKeySpec{SourceEnv: "JAZ_ACP_MUSE_API_KEY", TargetEnv: "META_API_KEY"}, true
 	default:
 		return AgentAPIKeySpec{}, false
 	}

@@ -5,6 +5,7 @@ import { SideBrowser } from '@/lib/sideBrowser'
 import { BrowserProfileImport } from '@/components/browser/BrowserProfileImport'
 import { exerciseProfileImport } from './profiles-ui'
 import { exerciseBrowserIdentity } from './identity'
+import { exerciseLinkedInNavigation } from './linkedin'
 import { exercisePreviewLinks } from './links'
 import '@/styles/globals.css'
 import { exerciseBrowserLifecycle } from './lifecycle'
@@ -54,6 +55,16 @@ function Fixture() {
     let stage = 'opening, profile import and cursor checks'
     const timeout = setTimeout(() => window.smoke.result({ ok: false, error: 'Browser smoke timed out', stage, pending: [...pending.values()] }), Number(new URLSearchParams(location.search).get('timeout') || 30000))
     const run = async () => {
+      const evaluate = async (expression: string) => {
+        const result = await browser.call({ method: 'Runtime.evaluate', params: { expression, returnByValue: true, awaitPromise: true } }) as { result: { value: unknown } }
+        return result.result.value
+      }
+      if (new URLSearchParams(location.search).get('suite') === 'linkedin') {
+        stage = 'blocked LinkedIn homepage recovery'
+        await exerciseLinkedInNavigation(browser, evaluate)
+        window.smoke.result({ ok: true, checks: ['blocked LinkedIn homepages reach sign-in; successful pages, other paths/sites and background requests retain their responses'] })
+        return
+      }
       if (new URLSearchParams(location.search).get('suite') === 'side-panel') {
         stage = 'side panel tabs and retained resources'
         await exerciseSidePanelTabs()
@@ -106,12 +117,11 @@ function Fixture() {
       await exerciseAnnotations()
       stage = 'opening, profile import and cursor checks'
       await browser.call({ method: 'Jaz.open', params: { url: `${location.origin}/target` } })
-      const evaluate = async (expression: string) => {
-        const result = await browser.call({ method: 'Runtime.evaluate', params: { expression, returnByValue: true, awaitPromise: true } }) as { result: { value: unknown } }
-        return result.result.value
-      }
       stage = 'browser identity'
       await exerciseBrowserIdentity(evaluate)
+      stage = 'blocked LinkedIn homepage recovery'
+      await exerciseLinkedInNavigation(browser, evaluate)
+      await browser.call({ method: 'Jaz.open', params: { url: `${location.origin}/target` } })
       stage = 'local preview URLs and external links'
       await exercisePreviewLinks(browser, evaluate)
       stage = 'profile import'

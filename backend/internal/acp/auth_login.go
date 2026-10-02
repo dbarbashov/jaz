@@ -31,8 +31,8 @@ func PrepareAgentLoginInvocation(name string, auth AgentAuthConfig, root string,
 			return fmt.Errorf("refusing to clear non-Jaz Claude profile %s", claudeConfigDir)
 		}
 	}
-	for key, dir := range invocation.Env {
-		dir = strings.TrimSpace(dir)
+	for _, key := range []string{"CODEX_HOME", "CLAUDE_CONFIG_DIR", "KIMI_CODE_HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME"} {
+		dir := strings.TrimSpace(invocation.Env[key])
 		if dir == "" {
 			continue
 		}

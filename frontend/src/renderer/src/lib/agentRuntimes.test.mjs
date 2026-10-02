@@ -22,20 +22,20 @@ describe('selectableACPModelProviders', () => {
   })
 })
 
-describe('Kimi native auth', () => {
-  test('requires a usable model configuration after OAuth', () => {
+describe('native agent readiness', () => {
+  test.each(['kimi', 'muse'])('%s requires an authenticated, ready runtime', (agent) => {
     const settings = {
-      agents: ['kimi'],
-      acp: { kimi: { enabled: false } },
-      acp_options: { kimi: { supports_auth: true } },
-      acp_auth: { kimi: { authenticated: false, ready: false } },
+      agents: [agent],
+      acp: { [agent]: { enabled: false } },
+      acp_options: { [agent]: { supports_auth: true } },
+      acp_auth: { [agent]: { authenticated: false, ready: false } },
     }
-    expect(acpAgentEnableable(settings, 'kimi')).toBe(false)
-    settings.acp_auth.kimi.authenticated = true
-    expect(acpAgentEnableable(settings, 'kimi')).toBe(false)
-    settings.acp_auth.kimi.ready = true
-    expect(acpAgentEnableable(settings, 'kimi')).toBe(true)
-    settings.acp_auth.kimi.authenticated = false
-    expect(acpAgentEnableable(settings, 'kimi')).toBe(false)
+    expect(acpAgentEnableable(settings, agent)).toBe(false)
+    settings.acp_auth[agent].authenticated = true
+    expect(acpAgentEnableable(settings, agent)).toBe(false)
+    settings.acp_auth[agent].ready = true
+    expect(acpAgentEnableable(settings, agent)).toBe(true)
+    settings.acp_auth[agent].authenticated = false
+    expect(acpAgentEnableable(settings, agent)).toBe(false)
   })
 })
