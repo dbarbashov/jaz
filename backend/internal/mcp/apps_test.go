@@ -114,6 +114,13 @@ func TestManagerServesMCPAppEntrypoints(t *testing.T) {
 		t.Fatalf("app calling a model-only tool: err = %v", err)
 	}
 
+	// A tool the server adds after the catalog loaded, as a new deploy of its
+	// app does, is found when the app first calls it.
+	mcpsdk.AddTool(remote, &mcpsdk.Tool{Name: "rename"}, answer)
+	if result, err := manager.CallAppTool(context.Background(), "srv1", "rename", json.RawMessage(`{"query":"q"}`), nil); err != nil || result.Content[0].(*mcpsdk.TextContent).Text != "rename:q" {
+		t.Fatalf("app calling a tool added since the catalog loaded: %+v %v", result, err)
+	}
+
 	if _, err := manager.ReadApp(context.Background(), "missing", "library"); err != ErrAppNotFound {
 		t.Fatalf("ReadApp(missing) err = %v", err)
 	}
