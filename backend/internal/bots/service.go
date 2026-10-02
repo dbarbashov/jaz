@@ -84,19 +84,7 @@ var botModels = map[string]struct{ model, effort string }{
 	acp.AgentClaude: {"opus[1m]", "medium"},
 }
 
-// Create makes a bot for the user, who meets it as it says hello and asks what
-// to focus on.
 func (s *Service) Create(ctx context.Context, input CreateBot) (Bot, error) {
-	bot, err := s.create(ctx, input)
-	if err != nil {
-		return Bot{}, err
-	}
-	go s.introduce(bot.ID)
-	return bot, nil
-}
-
-// create makes a bot that already has its work, such as a routine.
-func (s *Service) create(ctx context.Context, input CreateBot) (Bot, error) {
 	name := strings.TrimSpace(input.Name)
 	if name == "" {
 		return Bot{}, errors.New("name is required")
@@ -268,7 +256,7 @@ func (s *Service) RoutineOwner(threadID string, in loops.CreateLoop) (string, er
 	if name == "" {
 		name = "Routine bot"
 	}
-	bot, err := s.create(context.Background(), CreateBot{Name: name, Agent: in.ACPAgent, Model: in.Model})
+	bot, err := s.Create(context.Background(), CreateBot{Name: name, Agent: in.ACPAgent, Model: in.Model})
 	return bot.ID, err
 }
 
@@ -283,7 +271,7 @@ func (s *Service) AdoptLoops(ctx context.Context) error {
 		if routine.BotID != "" || s.routines.OnBoard(routine) {
 			continue
 		}
-		bot, err := s.create(ctx, CreateBot{Name: routine.Name, Agent: routine.ACPAgent, Model: routine.Model})
+		bot, err := s.Create(ctx, CreateBot{Name: routine.Name, Agent: routine.ACPAgent, Model: routine.Model})
 		if err != nil {
 			return fmt.Errorf("adopt loop %s: %w", routine.ID, err)
 		}

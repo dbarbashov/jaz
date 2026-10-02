@@ -105,16 +105,6 @@ func (s *Service) deliver(fromThread, sender, to, recipient, text string) {
 	s.announce(fromThread, sessionevents.BotActivityEvent{Kind: "message_received", Label: recipient})
 }
 
-// introduce gives a bot the user just created its first turn, in which it
-// says hello and asks what to focus on.
-func (s *Service) introduce(botID string) {
-	ctx, cancel := context.WithTimeout(context.Background(), turnTimeout)
-	defer cancel()
-	if _, err := s.threads.StartInternalTurnWhenIdle(ctx, acp.InternalTurnRequest{Session: botID, Message: introPrompt, AllowSilence: true}); err != nil {
-		s.log.Warn("bot introduction failed", "bot", botID, "error", err)
-	}
-}
-
 // RunRoutine runs a routine's prompt as a hidden turn in its bot's thread once
 // the thread is free, and returns that turn once it ends.
 func (s *Service) RunRoutine(ctx context.Context, botID, name, prompt string) (acp.Job, error) {

@@ -422,31 +422,6 @@ func TestASlowMemberDoesNotHoldUpTheOthers(t *testing.T) {
 	waitUntil(t, func() bool { return slices.Contains(world.roomMessages(group.ID), "Research: Here is a meme.") })
 }
 
-func TestTheUserMeetsTheirNewBotButNotOneMadeForARoutine(t *testing.T) {
-	world := newFakeWorld()
-	service := newTestService(world)
-
-	bot, err := service.Create(t.Context(), CreateBot{Name: "New bot"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	waitUntil(t, func() bool { return world.promptCount(bot.ID) == 1 })
-	world.mu.Lock()
-	intro := world.prompts[bot.ID][0]
-	world.mu.Unlock()
-	if !strings.HasPrefix(intro, "[new bot]") {
-		t.Fatalf("first turn = %q", intro)
-	}
-	owner, err := service.RoutineOwner("chat-thread", loops.CreateLoop{Name: "Digest"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	time.Sleep(20 * time.Millisecond)
-	if world.promptCount(owner) != 0 {
-		t.Fatal("a bot made for a routine introduced itself")
-	}
-}
-
 func TestNewBotsStartOnALightModelUnlessGivenOne(t *testing.T) {
 	world := newFakeWorld()
 	service := newTestService(world)
@@ -456,7 +431,7 @@ func TestNewBotsStartOnALightModelUnlessGivenOne(t *testing.T) {
 		{acp.AgentClaude, "", "opus[1m]/medium"},
 		{acp.AgentClaude, "sonnet", ""},
 	} {
-		bot, err := service.create(t.Context(), CreateBot{Name: "Bot " + tc.agent + tc.model, Agent: tc.agent, Model: tc.model})
+		bot, err := service.Create(t.Context(), CreateBot{Name: "Bot " + tc.agent + tc.model, Agent: tc.agent, Model: tc.model})
 		if err != nil {
 			t.Fatal(err)
 		}

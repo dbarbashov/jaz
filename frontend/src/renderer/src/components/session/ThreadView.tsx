@@ -102,6 +102,7 @@ export interface ThreadChatView {
   events: SessionEvent[]
   working: boolean
   threads: SpawnedThreadView[]
+  send: (text: string) => void
 }
 
 export interface ThreadDetailsView {
@@ -472,7 +473,7 @@ export function ThreadView({
               >
                 {chat ? (
                   <>
-                    {chat({ messages: transcriptMessages, events: displayEvents, working: sessionRunning, threads: spawnedThreads })}
+                    {chat({ messages: transcriptMessages, events: displayEvents, working: sessionRunning, threads: spawnedThreads, send: handleSend })}
                     {errorNotice}
                   </>
                 ) : empty ? (
