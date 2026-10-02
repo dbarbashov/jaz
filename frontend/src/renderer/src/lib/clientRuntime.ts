@@ -107,6 +107,14 @@ function createRuntime(): ClientRuntime {
 
 export const clientRuntime = createRuntime()
 
+export function openExternal(url: string): void {
+  if (clientRuntime.openExternalURL) {
+    clientRuntime.openExternalURL(url)
+    return
+  }
+  window.open(url, '_blank', 'noopener,noreferrer')
+}
+
 export function popOutBoard(boardId: string): void {
   if (clientRuntime.openBoardWindow) {
     clientRuntime.openBoardWindow(boardId)

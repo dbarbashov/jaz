@@ -8,7 +8,7 @@ import {
   startConnectionPlugin,
   submitConnectionQRPassword,
 } from '@/lib/api/connections'
-import { clientRuntime } from '@/lib/clientRuntime'
+import { openExternal } from '@/lib/clientRuntime'
 import type { ConnectionQRStart, IntegrationPlugin } from '@/lib/api/types'
 import { keys } from '@/lib/query/keys'
 import { pluginCanConnect } from './connectionFormatting'
@@ -60,7 +60,7 @@ export function useConnectionSignIn({ onStartAccepted }: { onStartAccepted?: () 
       if (result.type === 'oauth' && result.auth_url) {
         onStartAccepted?.()
         setPollUntil(Date.now() + 90_000)
-        openAuthURL(result.auth_url)
+        openExternal(result.auth_url)
         toast('Finish sign-in in your browser')
         return
       }
@@ -190,14 +190,6 @@ export function useConnectionSignIn({ onStartAccepted }: { onStartAccepted?: () 
     submitQRPassword,
     start,
   }
-}
-
-function openAuthURL(url: string): void {
-  if (clientRuntime.openExternalURL) {
-    clientRuntime.openExternalURL(url)
-    return
-  }
-  window.open(url, '_blank', 'noopener,noreferrer')
 }
 
 function closeQRSession(queryClient: QueryClient, sessionID?: string) {

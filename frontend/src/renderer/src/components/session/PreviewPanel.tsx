@@ -13,7 +13,7 @@ import { useCallback, useEffect, useEffectEvent, useRef, useState } from 'react'
 import { IconButton } from '@/components/ui/IconButton'
 import { previewDisplayUrl, resolvePreviewSource } from '@/lib/api/preview'
 import type { Attachment } from '@/lib/api/types'
-import { clientRuntime } from '@/lib/clientRuntime'
+import { clientRuntime, openExternal } from '@/lib/clientRuntime'
 import type { BrowserAnnotation } from '@/lib/messageContext'
 import { isPreviewURL, normalizePreviewURL, shouldProxyPreview } from '@shared/preview'
 import {
@@ -358,9 +358,7 @@ export function PreviewPanel({
           aria-label="Open in Browser"
           title="Open in Browser"
           disabled={!resolvedSourceUrl}
-          onClick={() => clientRuntime.openExternalURL
-            ? clientRuntime.openExternalURL(resolvedSourceUrl)
-            : window.open(resolvedSourceUrl, '_blank', 'noopener')}
+          onClick={() => openExternal(resolvedSourceUrl)}
         >
           <ExternalLink size={14} />
         </IconButton>

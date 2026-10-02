@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/Input'
 import { useToast } from '@/components/ui/toast'
 import { submitACPAuthLoginInput } from '@/lib/api/settings'
 import type { ACPAuthLogin } from '@/lib/api/types'
+import { openExternal } from '@/lib/clientRuntime'
 import { writeClipboard } from '@/lib/clipboard'
 
 export function AuthLoginStatus({
@@ -44,7 +45,7 @@ export function AuthLoginStatus({
     const key = `${job.id}:${details.url}`
     if (opened.current === key) return
     opened.current = key
-    openAuthURL(details.url)
+    openExternal(details.url)
   }, [details.url, job?.agent, job?.id, job?.status])
 
   if (!job && !running) return null
@@ -94,7 +95,7 @@ export function AuthLoginStatus({
       {showAuthDetails ? (
         <div className="flex flex-wrap items-center gap-2">
           {details.url ? (
-            <Button size="sm" variant="primary" onClick={() => openAuthURL(details.url)}>
+            <Button size="sm" variant="primary" onClick={() => openExternal(details.url)}>
               <ExternalLink size={13} />
               Open auth page
             </Button>
@@ -162,11 +163,6 @@ function firstAuthURL(value: string): string {
 
 function firstAuthCode(value: string): string {
   return value.match(/\b[A-Z0-9]{4}-[A-Z0-9]{4,6}\b/)?.[0] ?? ''
-}
-
-function openAuthURL(url: string): void {
-  if (!/^https:\/\//i.test(url)) return
-  window.open(url, '_blank', 'noopener,noreferrer')
 }
 
 async function copyAuthCode(code: string, toast: (message: string, tone?: 'ok' | 'danger') => void): Promise<void> {
