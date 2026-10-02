@@ -1,5 +1,3 @@
-import type { Bot } from '@/lib/api/types'
-
 // Things a new bot can start on, for someone who does not know yet what to
 // ask. They show only until the user says anything; picking one sends it as
 // their first message.
@@ -11,11 +9,11 @@ const STARTERS = [
   'Remind me about follow-ups I owe people',
 ]
 
-export function BotWelcome({ bot, onPick }: { bot: Bot; onPick: (text: string) => void }) {
+export function BotWelcome({ onPick }: { onPick: (text: string) => void }) {
   return (
     <div className="flex flex-col items-start gap-2">
       <div className="max-w-[84%] rounded-card bg-surface px-3.5 py-2.5 text-sm">
-        Hi, I&apos;m {bot.name}. What should I take care of? Pick one, or tell me in your own words.
+        Hi! What should I take care of? Pick one, or tell me in your own words.
       </div>
       <div className="flex w-full flex-col rounded-card border border-border bg-surface p-1.5">
         {STARTERS.map((text) => (
