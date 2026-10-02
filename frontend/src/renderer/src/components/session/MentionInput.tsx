@@ -651,7 +651,7 @@ export function MentionTextarea({
         aria-expanded={mention.menuOpen}
         // No spellcheck: squiggles under skill/path tokens read as errors.
         spellCheck={false}
-        className={`composer-input relative z-[1] w-full resize-none bg-transparent ${minHeightClass} ${TEXT_CLASSES} text-transparent caret-ink select-text placeholder:text-ink-3 disabled:cursor-default`}
+        className={`composer-input relative z-[1] block w-full resize-none bg-transparent ${minHeightClass} ${TEXT_CLASSES} text-transparent caret-ink select-text placeholder:text-ink-3 disabled:cursor-default`}
         style={{ maxHeight: mention.maxHeight }}
         onFocus={mention.onFocus}
         onBlur={mention.onBlur}
