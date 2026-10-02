@@ -1,10 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Link2, MoreHorizontal, Play, Trash2 } from 'lucide-react'
+import { Link2, MoreHorizontal, Play, Power, PowerOff, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { loopWhen } from '@/components/loops/schedule'
 import { IconButton } from '@/components/ui/IconButton'
 import { MenuRow, Popover } from '@/components/ui/Popover'
-import { Switch } from '@/components/ui/Switch'
 import { useToast } from '@/components/ui/toast'
 import { apiUrl } from '@/lib/api/client'
 import { botRoutinesQuery, deleteLoop, loopTone, runLoopNow, updateLoop } from '@/lib/api/loops'
@@ -49,7 +48,7 @@ function RoutineRow({ loop }: { loop: Loop }) {
     setMenuOpen(false)
     action()
   }
-  const next = paused ? 'Paused' : hasTime(loop.next_run_at) ? `next ${messageTime(loop.next_run_at)}` : ''
+  const next = paused ? 'Disabled' : hasTime(loop.next_run_at) ? `next ${messageTime(loop.next_run_at)}` : ''
   // The switch already says on or off; only a run in progress or a failed
   // one needs saying.
   const tone = loopTone(loop.last_run_status, loop.status)
@@ -57,19 +56,13 @@ function RoutineRow({ loop }: { loop: Loop }) {
   return (
     <div className="flex items-center gap-2.5 py-1">
       <div className="min-w-0 flex-1">
-        <p className="truncate text-[13px] text-ink">{loop.name}</p>
+        <p className={`truncate text-[13px] ${paused ? 'text-ink-3' : 'text-ink'}`}>{loop.name}</p>
         <p className="truncate text-[12px] text-ink-3">
           {tone === 'running' ? <span className="text-running">Running now · </span> : null}
           {tone === 'failed' ? <span className="text-danger">Last run failed · </span> : null}
           {[loopWhen(loop), next].filter(Boolean).join(' · ')}
         </p>
       </div>
-      <Switch
-        checked={!paused}
-        aria-label={paused ? `Resume ${loop.name}` : `Pause ${loop.name}`}
-        disabled={act.isPending}
-        onChange={() => act.mutate('toggle')}
-      />
       <Popover
         open={menuOpen}
         onClose={() => setMenuOpen(false)}
@@ -85,6 +78,12 @@ function RoutineRow({ loop }: { loop: Loop }) {
           <span className="flex items-center gap-2">
             <Play size={13} />
             Run now
+          </span>
+        </MenuRow>
+        <MenuRow onClick={menu(() => act.mutate('toggle'))}>
+          <span className="flex items-center gap-2">
+            {paused ? <Power size={13} /> : <PowerOff size={13} />}
+            {paused ? 'Enable' : 'Disable'}
           </span>
         </MenuRow>
         {loop.trigger?.kind === 'webhook' ? (
