@@ -11,6 +11,7 @@ describe('bot chat log', () => {
   const wrote = (minute, text) => event(minute, { type: 'acp_message', content: text, acp: { id: 'gimli' } })
   const tool = (minute) => event(minute, { type: 'acp', acp: { id: 'gimli', tool_calls: [{ id: 't', title: 'Run rm -rf build' }] } })
   const woke = (minute, kind, label) => event(minute, { type: 'bot_activity', bot_activity: { kind, label } })
+  const opens = [{ server_id: 'crm', tool: 'show_crm', type: 'global', title: 'Customers' }]
   const shape = (entries) => entries.map((entry) => entry.kind === 'activity' ? `· ${entry.event.bot_activity?.kind ?? entry.event.type}` : `${entry.kind}: ${entry.text}`)
 
   test('shows only what was typed and sent, never the work between', () => {
@@ -19,6 +20,7 @@ describe('bot chat log', () => {
       [wrote(2, 'Let me find the issue first.'), tool(3), said(4, 'Moved it.'), wrote(5, 'Done: DEM-6 is In Progress.')],
       self,
       false,
+      [],
     )
     expect(shape(entries)).toEqual(['user: move linkin park to in progress', 'bot: Moved it.'])
   })
@@ -26,16 +28,16 @@ describe('bot chat log', () => {
   test('a finished turn that sent nothing falls back to its last reply, even after messaging a bot', () => {
     const messages = [user(1, 1, 'hi')]
     const events = [wrote(2, 'Checking.'), woke(3, 'message_sent', 'Pip'), tool(4), wrote(5, 'Hi! What should we work on?')]
-    expect(shape(botChat(messages, events, self, true).entries)).toEqual(['user: hi', '· message_sent'])
-    expect(shape(botChat(messages, events, self, false).entries)).toEqual(['user: hi', '· message_sent', 'bot: Hi! What should we work on?'])
+    expect(shape(botChat(messages, events, self, true, []).entries)).toEqual(['user: hi', '· message_sent'])
+    expect(shape(botChat(messages, events, self, false, []).entries)).toEqual(['user: hi', '· message_sent', 'bot: Hi! What should we work on?'])
   })
 
-  test('a user-requested app preserves its result and suppresses private fallback replies', () => {
+  test('an app the bot opens for the user shows and stands in for a reply, while its lookups stay private', () => {
     const app = { server_id: 'crm', tool: 'show_crm', arguments: { path: '/o/deals' }, result: { content: [{ type: 'text', text: '{"path":"/o/deals"}' }], structuredContent: { path: '/o/deals' } } }
-    const resource = event(3, { type: 'mcp_app', mcp_app: app })
-    const events = [wrote(2, 'Looking up the deals.'), resource, tool(4), wrote(5, 'Private notes.')]
+    const lookup = { server_id: 'crm', tool: 'search_records', arguments: { object: 'deals' }, result: { content: [], structuredContent: { resource_uri: 'ui://jaz-crm/o/deals' } } }
+    const events = [wrote(2, 'Looking up the deals.'), event(3, { type: 'mcp_app', mcp_app: lookup }), event(3, { type: 'mcp_app', mcp_app: app }), tool(4), wrote(5, 'Private notes.')]
     for (const working of [true, false]) {
-      const { entries } = botChat([user(1, 1, 'show me deals')], events, self, working)
+      const { entries } = botChat([user(1, 1, 'show me deals')], events, self, working, opens)
       expect(entries.map((entry) => entry.kind)).toEqual(['user', 'app'])
       expect(entries[1].app).toBe(app)
     }
@@ -44,7 +46,7 @@ describe('bot chat log', () => {
   test('apps from group and routine turns stay private until the user asks again', () => {
     const app = { server_id: 'crm', tool: 'show_crm', arguments: { path: '/o/deals' }, result: { content: [] } }
     const events = [said(2, 'Hey.'), woke(3, 'group', 'Team'), event(4, { type: 'mcp_app', mcp_app: app }), woke(5, 'routine', 'Digest'), event(6, { type: 'mcp_app', mcp_app: app }), event(8, { type: 'mcp_app', mcp_app: app })]
-    const { entries } = botChat([user(1, 1, 'hi'), user(2, 7, 'show me deals')], events, self, false)
+    const { entries } = botChat([user(1, 1, 'hi'), user(2, 7, 'show me deals')], events, self, false, opens)
     expect(entries.map((entry) => entry.kind)).toEqual(['user', 'bot', 'user', 'app'])
     expect(entries.at(-1).at).toBe(at(8))
   })
@@ -55,15 +57,16 @@ describe('bot chat log', () => {
       [said(2, 'Hey.'), woke(3, 'group', 'Team'), wrote(4, 'PASS'), woke(5, 'routine', 'Digest'), wrote(6, 'Nothing new.'), woke(7, 'message_sent', 'dr eggbot'), event(8, { type: 'agent_switch', content: 'codex' })],
       self,
       false,
+      [],
     )
     expect(shape(entries)).toEqual(['user: hi', 'bot: Hey.', '· message_sent', '· agent_switch'])
   })
 
   test('a working bot says what it is busy with and its latest note, until the user writes again', () => {
     const events = [said(2, 'Hey.'), woke(3, 'group', 'Team'), wrote(4, 'Reading the CRM.\n\nChecking two more threads.')]
-    expect(botChat([user(1, 1, 'hi')], events, self, true).work).toEqual({ doing: 'working in Team', note: 'Checking two more threads.' })
-    expect(botChat([user(1, 1, 'hi')], [...events, woke(5, 'routine', 'Say hi')], self, true).work).toEqual({ doing: 'running Say hi', note: undefined })
-    expect(botChat([user(1, 1, 'hi'), user(2, 6, 'still there?')], events, self, true).work.doing).toBeUndefined()
+    expect(botChat([user(1, 1, 'hi')], events, self, true, []).work).toEqual({ doing: 'working in Team', note: 'Checking two more threads.' })
+    expect(botChat([user(1, 1, 'hi')], [...events, woke(5, 'routine', 'Say hi')], self, true, []).work).toEqual({ doing: 'running Say hi', note: undefined })
+    expect(botChat([user(1, 1, 'hi'), user(2, 6, 'still there?')], events, self, true, []).work.doing).toBeUndefined()
   })
 })
 
@@ -76,8 +79,8 @@ test('a question the bot asks shows in its chat, carries its answer and stands i
     asked(3, 'permission_request'),
     asked(4, 'permission_request'),
   ]
-  expect(botChat(messages, events, { id: 'gimli', name: 'Gimli' }, true).waiting).toBe(true)
-  const { entries, waiting } = botChat(messages, [...events, asked(5, 'permission_response', { status: 'resolved' })], { id: 'gimli', name: 'Gimli' }, false)
+  expect(botChat(messages, events, { id: 'gimli', name: 'Gimli' }, true, []).waiting).toBe(true)
+  const { entries, waiting } = botChat(messages, [...events, asked(5, 'permission_response', { status: 'resolved' })], { id: 'gimli', name: 'Gimli' }, false, [])
   expect(entries.map((entry) => entry.kind)).toEqual(['user', 'question'])
   expect(entries[1].event.seq).toBe(4)
   expect(entries[1].answer?.status).toBe('resolved')
