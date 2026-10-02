@@ -103,6 +103,7 @@ export interface ThreadChatView {
   working: boolean
   threads: SpawnedThreadView[]
   send: (text: string) => void
+  showDetails: () => void
 }
 
 export interface ThreadDetailsView {
@@ -183,6 +184,10 @@ export function ThreadView({
   const detailSession = detail.data?.session
   const sideChatAvailable = isCodexACPSession(detailSession)
   const sidePanel = useSidePanelState(sessionId, sideChatAvailable, openDetails)
+  const { open: panelOpen, mode: panelMode, toggleMode: togglePanel } = sidePanel
+  const showDetails = useCallback(() => {
+    if (!panelOpen || panelMode !== 'overview') togglePanel('overview')
+  }, [panelOpen, panelMode, togglePanel])
   // Phone: the docked panel would crush the transcript to a sliver, so it
   // becomes a full-screen overlay (CSS `max-sm:w-full`) that slides in instead
   // of a column.
@@ -473,7 +478,7 @@ export function ThreadView({
               >
                 {chat ? (
                   <>
-                    {chat({ messages: transcriptMessages, events: displayEvents, working: sessionRunning, threads: spawnedThreads, send: handleSend })}
+                    {chat({ messages: transcriptMessages, events: displayEvents, working: sessionRunning, threads: spawnedThreads, send: handleSend, showDetails })}
                     {errorNotice}
                   </>
                 ) : empty ? (

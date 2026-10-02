@@ -115,23 +115,43 @@ export function describeSchedule(draft: ScheduleDraft): string {
   }
 }
 
-// A compact label (e.g. "Daily · 9:00 AM") for loop rows and cards.
+// A short readable label for when a schedule runs, such as "Every 2 hours" or
+// "Weekdays · 9:00 AM", or '' when it is too irregular to say briefly; the
+// next run time then speaks for it.
 export function compactSchedule(expr: string, paused: boolean): string {
   if (paused) return 'Manual'
-  const draft = parseExpr(expr)
-  const time = formatTime(draft.time)
-  switch (draft.preset) {
-    case 'hourly':
-      return 'Hourly'
-    case 'daily':
-      return `Daily · ${time}`
-    case 'weekdays':
-      return `Weekdays · ${time}`
-    case 'weekly':
-      return `${WEEKDAY_LABELS[draft.weekday].slice(0, 3)} · ${time}`
-    default:
-      return expr.trim()
+  const [min, hour, dom, mon, dow, extra] = expr.trim().split(/\s+/)
+  if (dow === undefined || extra !== undefined || dom !== '*' || mon !== '*') return ''
+  const days = dow === '*' ? '' : dow === '1-5' ? 'Weekdays' : /^[0-6]$/.test(dow) ? `${WEEKDAY_LABELS[Number(dow)]}s` : undefined
+  const often = frequency(min, hour)
+  if (days === undefined || !often) return ''
+  return [days || (often.daily ? 'Daily' : ''), often.text].filter(Boolean).join(' · ')
+}
+
+// How often within a day a schedule runs: at fixed times, or repeating.
+function frequency(min: string, hour: string): { text: string; daily: boolean } | undefined {
+  if (hour === '*') {
+    const step = /^\*\/(\d+)$/.exec(min)
+    return min === '0' ? { text: 'Hourly', daily: false } : step ? { text: every(step[1], 'minute'), daily: false } : undefined
   }
+  if (!/^\d+$/.test(min)) return undefined
+  if (/^\d+(,\d+)*$/.test(hour)) {
+    return { text: hour.split(',').map((h) => formatTime(`${h}:${min}`)).join(', '), daily: true }
+  }
+  const repeat = /^(?:\*|(\d+)-(\d+))(?:\/(\d+))?$/.exec(hour)
+  if (!repeat) return undefined
+  const [, from, to, step] = repeat
+  const text = step ? every(step, 'hour') : 'Hourly'
+  return { text: from ? `${text}, ${hourLabel(from)}–${hourLabel(to)}` : text, daily: false }
+}
+
+function every(count: string, unit: string): string {
+  return count === '1' ? `Every ${unit}` : `Every ${count} ${unit}s`
+}
+
+function hourLabel(hour: string): string {
+  const h = Number(hour)
+  return `${h % 12 === 0 ? 12 : h % 12} ${h < 12 ? 'AM' : 'PM'}`
 }
 
 interface CronField {

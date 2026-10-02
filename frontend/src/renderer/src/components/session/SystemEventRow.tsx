@@ -9,17 +9,29 @@ const ACTIVITY: Record<BotActivityEvent['kind'], [LucideIcon, (label: string) =>
   group: [Users, (label) => `In ${label}`],
 }
 
-// What woke a bot, or what it set up, as one quiet centered line.
-export function SystemEventRow({ event }: { event: SessionEvent }) {
+// What woke a bot, or what it set up, as one quiet centered line; with `onOpen`
+// the line opens what it names.
+export function SystemEventRow({ event, onOpen }: { event: SessionEvent; onOpen?: () => void }) {
   const [Icon, text] = event.bot_activity
     ? ACTIVITY[event.bot_activity.kind]
     : event.type === 'agent_switch'
       ? [ArrowLeftRight, (label: string) => `Switched to ${agentLabel(label)}`]
       : [CalendarPlus, (label: string) => `Created routine · ${label}`]
-  return (
-    <p className="flex min-w-0 items-center justify-center gap-1.5 py-1 text-[12px] text-ink-3">
+  const line = (
+    <>
       <Icon size={12} aria-hidden className="shrink-0" />
       <span className="truncate">{text(event.bot_activity?.label ?? event.loop_created?.loop_name ?? event.content ?? '')}</span>
-    </p>
+    </>
+  )
+  return onOpen ? (
+    <button
+      type="button"
+      onClick={onOpen}
+      className="mx-auto flex min-w-0 max-w-full cursor-pointer items-center justify-center gap-1.5 rounded-md px-2 py-1 text-[12px] text-ink-3 transition-colors duration-150 hover:bg-list-hover hover:text-ink-2"
+    >
+      {line}
+    </button>
+  ) : (
+    <p className="flex min-w-0 items-center justify-center gap-1.5 py-1 text-[12px] text-ink-3">{line}</p>
   )
 }

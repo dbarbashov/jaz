@@ -19,11 +19,14 @@ export function ChatLog({
   bots,
   named,
   working,
+  onOpenRoutines,
 }: {
   entries: ChatEntry[]
   bots: Bot[]
   named: boolean
   working: ({ bot: Bot } & BotWork)[]
+  // Opens the routines a "Created routine" line names.
+  onOpenRoutines?: () => void
 }) {
   const avatar = (id?: string) => bots.find((bot) => bot.id === id)?.avatar ?? GONE
   return (
@@ -43,7 +46,7 @@ export function ChatLog({
             {entry.kind === 'user' ? (
               <UserBubble text={entry.text} createdAt={entry.at} />
             ) : entry.kind === 'activity' ? (
-              <SystemEventRow event={entry.event} />
+              <SystemEventRow event={entry.event} onOpen={entry.event.loop_created ? onOpenRoutines : undefined} />
             ) : entry.kind === 'app' ? (
               <MCPAppFrame app={entry.app} call={entry.app} active />
             ) : entry.kind === 'question' ? (

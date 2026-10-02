@@ -7,7 +7,7 @@ import { MenuRow, Popover } from '@/components/ui/Popover'
 import { Switch } from '@/components/ui/Switch'
 import { useToast } from '@/components/ui/toast'
 import { apiUrl } from '@/lib/api/client'
-import { botRoutinesQuery, deleteLoop, loopTone, runLoopNow, TONE_DOT, updateLoop } from '@/lib/api/loops'
+import { botRoutinesQuery, deleteLoop, loopTone, runLoopNow, updateLoop } from '@/lib/api/loops'
 import type { Bot, Loop } from '@/lib/api/types'
 import { writeClipboard } from '@/lib/clipboard'
 import { hasTime, messageTime } from '@/lib/format/time'
@@ -49,14 +49,20 @@ function RoutineRow({ loop }: { loop: Loop }) {
     setMenuOpen(false)
     action()
   }
-  const when = paused ? 'Paused' : hasTime(loop.next_run_at) ? `next ${messageTime(loop.next_run_at)}` : ''
+  const next = paused ? 'Paused' : hasTime(loop.next_run_at) ? `next ${messageTime(loop.next_run_at)}` : ''
+  // The switch already says on or off; only a run in progress or a failed
+  // one needs saying.
+  const tone = loopTone(loop.last_run_status, loop.status)
 
   return (
     <div className="flex items-center gap-2.5 py-1">
-      <span className={`size-1.5 shrink-0 rounded-full ${TONE_DOT[loopTone(loop.last_run_status, loop.status)]}`} />
       <div className="min-w-0 flex-1">
         <p className="truncate text-[13px] text-ink">{loop.name}</p>
-        <p className="truncate text-[12px] text-ink-3">{[loopWhen(loop), when].filter(Boolean).join(' · ')}</p>
+        <p className="truncate text-[12px] text-ink-3">
+          {tone === 'running' ? <span className="text-running">Running now · </span> : null}
+          {tone === 'failed' ? <span className="text-danger">Last run failed · </span> : null}
+          {[loopWhen(loop), next].filter(Boolean).join(' · ')}
+        </p>
       </div>
       <Switch
         checked={!paused}

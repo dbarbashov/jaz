@@ -88,7 +88,7 @@ function LoopRow({ loop }: { loop: Loop }) {
       </div>
       <div className="flex shrink-0 flex-col items-end gap-0.5 text-right">
         <span className="text-[12px] text-ink-2">
-          {loopWhen(loop, paused)} · {agent}
+          {[loopWhen(loop, paused), agent].filter(Boolean).join(' · ')}
         </span>
         <span className="text-[11px] tabular-nums text-ink-3">
           {hasTime(loop.last_run_at)
