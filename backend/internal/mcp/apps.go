@@ -181,7 +181,13 @@ func (m *Manager) CallAppTool(ctx context.Context, serverID, name string, argume
 	if session == nil || len(session.apps.uris) == 0 {
 		return nil, ErrAppNotFound
 	}
-	if !session.apps.callable[name] {
+	// A tool the catalog has never seen may have come with a new deploy of
+	// the server's app, so the catalogs reload once before it is refused.
+	if !session.apps.callable[name] && !slices.ContainsFunc(session.tools, func(tool remoteTool) bool { return tool.remoteName == name }) {
+		m.Refresh(context.WithoutCancel(ctx))
+		session = m.session(serverID)
+	}
+	if session == nil || !session.apps.callable[name] {
 		return nil, fmt.Errorf("%w: %s", ErrAppToolDenied, name)
 	}
 	return session.callTool(ctx, &mcpsdk.CallToolParams{Name: name, Arguments: arguments, Meta: meta})
