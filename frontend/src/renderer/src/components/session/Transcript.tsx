@@ -1,5 +1,7 @@
 import { memo, useEffect, useMemo, useState, type ReactNode, type RefObject } from 'react'
-import type { ChatMessage, SessionEvent } from '@/lib/api/types'
+import { useQuery } from '@tanstack/react-query'
+import type { ChatMessage, MCPEntrypoint, SessionEvent } from '@/lib/api/types'
+import { mcpEntrypointsQuery } from '@/lib/api/mcp'
 import { Collapse } from '@/components/ui/Collapse'
 import { DisclosureTrigger } from '@/components/ui/DisclosureTrigger'
 import { taskSurfaceFromEvent } from '@/lib/taskSurface'
@@ -20,6 +22,7 @@ const INITIAL_VISIBLE_TURNS = 14
 const VISIBLE_TURN_BATCH = 24
 const INITIAL_VISIBLE_ITEMS = 90
 const VISIBLE_ITEM_BATCH = 120
+const NO_ENTRYPOINTS: MCPEntrypoint[] = []
 
 type RenderOptions = {
   showAssistantCopy?: boolean
@@ -129,6 +132,7 @@ export const Transcript = memo(function Transcript({
   loadingEarlierHistory?: boolean
   onLoadEarlierHistory?: () => Promise<boolean>
 }) {
+  const entrypoints = useQuery(mcpEntrypointsQuery).data ?? NO_ENTRYPOINTS
   const {
     chronological,
     anchored,
@@ -137,8 +141,8 @@ export const Transcript = memo(function Transcript({
     latestTaskSurfaceEvent,
     pendingPermissionIds,
   } = useMemo(
-    () => buildTimeline(messages, events, sessionId, groupTurns),
-    [messages, events, sessionId, groupTurns],
+    () => buildTimeline(messages, events, sessionId, groupTurns, entrypoints),
+    [messages, events, sessionId, groupTurns, entrypoints],
   )
   const [visibleHistoryCount, setVisibleHistoryCount] = useState(
     groupTurns ? INITIAL_VISIBLE_TURNS : INITIAL_VISIBLE_ITEMS,

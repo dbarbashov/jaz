@@ -1,6 +1,6 @@
 import { afterEach, expect, mock, test } from 'bun:test'
 import { createElement } from 'react'
-import { renderToStaticMarkup } from 'react-dom/server'
+import { renderToStaticMarkup as renderMarkup } from 'react-dom/server'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import codexAgentCalls from '@/components/session/fixtures/codexAgentCalls.json'
 
@@ -61,6 +61,10 @@ mock.module('./EditDiffBlock', () => ({
 
 const { ActivityBlock } = await import('./ActivityBlock')
 const { Transcript } = await import('./Transcript')
+
+const renderToStaticMarkup = (element) => renderMarkup(
+  createElement(QueryClientProvider, { client: new QueryClient() }, element),
+)
 
 const thought = (text, key = 'thought') => ({ kind: 'thought', text, key })
 const tool = (call, key = `tool-${call.id}`) => ({ kind: 'tool', call, key })

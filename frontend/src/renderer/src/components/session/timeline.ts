@@ -2,7 +2,8 @@
 // events) into the ordered, filtered, grouped items the Transcript component
 // renders. Pure data — no JSX — so the component can memoize one buildTimeline
 // call per data change.
-import type { ACPEvent, ACPPermission, ACPToolCall, ChatMessage, SessionEvent } from '@/lib/api/types'
+import type { ACPEvent, ACPPermission, ACPToolCall, ChatMessage, MCPEntrypoint, SessionEvent } from '@/lib/api/types'
+import { isAppEntrypoint } from '@/lib/mcpApps'
 import { taskSurfaceFromEvent } from '@/lib/taskSurface'
 import { messageText } from '@/lib/messageText'
 import { isParentChildACPEvent, sessionEventCoalesceKey } from '@/lib/sessionEvents'
@@ -373,6 +374,7 @@ export function buildTimeline(
   events: SessionEvent[],
   sessionId: string | undefined,
   groupTurns: boolean,
+  entrypoints: MCPEntrypoint[] = [],
 ) {
   const permissionResolutions = new Map<string, ACPPermission>()
   const latestPermissionRequest = new Map<string, number>()
@@ -412,7 +414,7 @@ export function buildTimeline(
       if (event.type === 'artifact') return Boolean(event.artifact)
       if (event.type === 'loop_created') return Boolean(event.loop_created)
       if (event.type === 'bot_activity') return Boolean(event.bot_activity)
-      if (event.type === 'mcp_app') return Boolean(event.mcp_app)
+      if (event.type === 'mcp_app') return Boolean(event.mcp_app && isAppEntrypoint(event.mcp_app, entrypoints))
       if (!acp) {
         if (taskSurface) return true
         return Boolean(event.content || event.permission || event.voice)

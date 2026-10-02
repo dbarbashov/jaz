@@ -1,5 +1,6 @@
 import type { ACPPermission, Bot, BotActivityEvent, BotAvatar, BotColor, BotShape, ChatMessage, MCPAppEvent, MCPEntrypoint, SessionEvent } from '@/lib/api/types'
 import { messageText } from '@/lib/messageText'
+import { isAppEntrypoint } from '@/lib/mcpApps'
 import { hasPermissionSurface } from '@/lib/sessionPermissions'
 import { type SpawnedThreadView, threadRunning } from '@/lib/spawnedThreads'
 
@@ -126,7 +127,6 @@ export function botChat(
   working: boolean,
   entrypoints: MCPEntrypoint[],
 ): { entries: ChatEntry[]; work: BotWork; waiting: boolean } {
-  const opened = (app: MCPAppEvent) => entrypoints.some((point) => point.server_id === app.server_id && point.tool === app.tool)
   const items = [
     ...messages.flatMap((message) =>
       message.role === 'user' ? [{ at: message.created_at, message, event: undefined }] : [],
@@ -160,7 +160,7 @@ export function botChat(
       if (opens) close()
       if (activity.kind === 'message_sent' || activity.kind === 'message_received') entries.push({ kind: 'activity', key, at, event })
       if (opens) turn = { at, user: false, spoke: false, activity }
-    } else if (event.type === 'mcp_app' && event.mcp_app && turn?.user && opened(event.mcp_app)) {
+    } else if (event.type === 'mcp_app' && event.mcp_app && turn?.user && isAppEntrypoint(event.mcp_app, entrypoints)) {
       entries.push({ kind: 'app', key, at, app: event.mcp_app })
       turn.spoke = true
     } else if (event.type === 'permission_request' && event.permission && hasPermissionSurface(event.permission)) {

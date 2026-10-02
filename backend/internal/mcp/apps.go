@@ -201,8 +201,7 @@ type sessionEventPublisher interface {
 	Publish(event sessionevents.Event)
 }
 
-// WithSessionEvents shows the MCP App a tool links to in the thread of the
-// agent that called it.
+// WithSessionEvents shows explicitly opened apps in the calling agent's thread.
 func WithSessionEvents(store sessionEventAppender, bus sessionEventPublisher) Option {
 	return func(m *Manager) {
 		m.eventStore = store
@@ -210,9 +209,9 @@ func WithSessionEvents(store sessionEventAppender, bus sessionEventPublisher) Op
 	}
 }
 
-// proxyCall runs an agent's call to a remote tool, then shows the tool's MCP
-// App, if it links one, in the agent's thread with the call's arguments and
-// result. A failed call shows only in the transcript.
+// proxyCall preserves the remote result and opens entrypoint apps. Linked
+// resources on ordinary tools remain part of the tool's result, without
+// opening an app for every lookup in a batch.
 func (m *Manager) proxyCall(tool remoteTool) mcpsdk.ToolHandler {
 	return func(ctx context.Context, req *mcpsdk.CallToolRequest) (*mcpsdk.CallToolResult, error) {
 		result, err := tool.callRaw(ctx, req)
@@ -225,7 +224,9 @@ func (m *Manager) proxyCall(tool remoteTool) mcpsdk.ToolHandler {
 
 func (m *Manager) showApp(sessionID string, tool remoteTool, arguments json.RawMessage, result *mcpsdk.CallToolResult) {
 	session := m.session(tool.serverID)
-	if m.eventStore == nil || sessionID == "" || session == nil || session.apps.uris[tool.remoteName] == "" {
+	if m.eventStore == nil || sessionID == "" || session == nil || !slices.ContainsFunc(session.apps.entrypoints, func(point Entrypoint) bool {
+		return point.Tool == tool.remoteName
+	}) {
 		return
 	}
 	data, err := json.Marshal(result)

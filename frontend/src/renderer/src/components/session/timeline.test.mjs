@@ -1,6 +1,35 @@
 import { describe, expect, test } from 'bun:test'
 import { buildTimeline, classifyTurnItems, stableEventKey } from './timeline'
 
+test('batch lookup apps stay off the timeline while explicit opens and tool history remain', () => {
+  const at = (second) => new Date(second * 1000).toISOString()
+  const app = (seq, tool, server_id = 'crm') => ({
+    session_id: 'thread', type: 'mcp_app', seq, at: at(seq),
+    mcp_app: { server_id, tool, arguments: {}, result: { content: [], structuredContent: { id: String(seq) } } },
+  })
+  const lookup = { id: 'lookup', title: 'get_record', status: 'completed' }
+  const work = acpEvent('thread', 'acp', 1, { tool_calls: [lookup] })
+  const opened = app(505, 'show_crm')
+  const answer = { session_id: 'thread', type: 'acp_message', seq: 507, at: at(507), content: 'All records verified.' }
+  const events = [
+    work,
+    ...Array.from({ length: 503 }, (_, i) => app(i + 2, i < 8 ? 'search_records' : 'get_record')),
+    opened,
+    app(506, 'show_crm', 'different-server'),
+    answer,
+  ]
+  const entrypoints = [{ server_id: 'crm', tool: 'show_crm', type: 'thread', title: 'Customers' }]
+  for (const grouped of [false, true]) {
+    for (const catalog of [[], entrypoints]) {
+      const timeline = buildTimeline([], events, 'thread', grouped, catalog)
+      expect(timeline.chronological[0].entries[0].call).toBe(lookup)
+      expect(timeline.chronological.filter((item) => item.kind === 'event').map((item) => item.event))
+        .toEqual(catalog.length ? [opened, answer] : [answer])
+    }
+  }
+  expect(events.filter((event) => event.type === 'mcp_app')).toHaveLength(505)
+})
+
 test('questions stay inline and visible before and after resolution while approvals remain anchored', () => {
   const at = (second) => new Date(second * 1000).toISOString()
   const request = {
