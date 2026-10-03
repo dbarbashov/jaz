@@ -102,12 +102,12 @@ func (r connectionMCPServerReader) connectionBackedServers(ctx context.Context, 
 			continue
 		}
 		out = append(out, mcpconfig.Server{
-			ID:        account.ID,
-			Name:      remoteServerName(account),
-			Transport: mcpconfig.TransportStreamableHTTP,
-			URL:       url,
-			Enabled:   true,
-			Headers:   []mcpconfig.Header{{Name: "Authorization", Value: "Bearer " + token.AccessToken}},
+			ID:                account.ID,
+			Name:              remoteServerName(account),
+			Transport:         mcpconfig.TransportStreamableHTTP,
+			URL:               url,
+			Enabled:           true,
+			TokenConnectionID: account.ID,
 		})
 	}
 	return out, nil

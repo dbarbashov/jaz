@@ -26,6 +26,10 @@ func NewConnectionOAuthService(store *sqlitestore.Store, cfg Config) *connection
 			ClientID:     cfg.Connections.Gmail.OAuthClientID,
 			ClientSecret: cfg.Connections.Gmail.OAuthClientSecret,
 		},
+		Drive: googleconnector.OAuthClientConfig{
+			ClientID:     cfg.Connections.Drive.OAuthClientID,
+			ClientSecret: cfg.Connections.Drive.OAuthClientSecret,
+		},
 		Slack: slackconnector.OAuthClientConfig{
 			ClientID: cfg.Connections.Slack.OAuthClientID,
 		},

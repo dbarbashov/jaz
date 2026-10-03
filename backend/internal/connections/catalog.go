@@ -6,6 +6,7 @@ import (
 
 	"github.com/wins/jaz/backend/internal/connectors/calendar"
 	"github.com/wins/jaz/backend/internal/connectors/deployink"
+	"github.com/wins/jaz/backend/internal/connectors/drive"
 	"github.com/wins/jaz/backend/internal/connectors/gmail"
 	"github.com/wins/jaz/backend/internal/connectors/jazapps"
 	"github.com/wins/jaz/backend/internal/connectors/slack"
@@ -22,6 +23,7 @@ func NewCatalog() *Catalog {
 	return &Catalog{plugins: []integrations.Plugin{
 		calendar.Plugin(),
 		deployink.Plugin(),
+		drive.Plugin(),
 		gmail.Plugin(),
 		jazapps.Tasks(),
 		jazapps.CRM(),

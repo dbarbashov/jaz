@@ -34,6 +34,7 @@ const DefaultOAuthRedirectBroker = "https://jaz.chat/oauth/callback"
 
 type OAuthConfig struct {
 	Calendar          googleconnector.OAuthClientConfig
+	Drive             googleconnector.OAuthClientConfig
 	Gmail             googleconnector.OAuthClientConfig
 	Slack             slackconnector.OAuthClientConfig
 	RedirectBrokerURL string
@@ -77,6 +78,7 @@ func NewOAuthService(store OAuthStore, config OAuthConfig) *OAuthService {
 	providers := map[string]oauthProvider{}
 	for _, p := range []oauthProvider{
 		newCalendarOAuthProvider(config.Calendar),
+		newDriveOAuthProvider(config.Drive),
 		newGmailOAuthProvider(config.Gmail),
 		slackOAuthProvider{config: config.Slack},
 	} {

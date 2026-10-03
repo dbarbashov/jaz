@@ -34,7 +34,7 @@ var errNeedsAuthorization = errors.New("authorization required")
 // Authorize — only when interactive — runs the browser authorization-code flow and
 // persists the result.
 type oauthHandler struct {
-	serverID   string
+	tokenID    string
 	serverURL  string
 	oauth      mcpconfig.OAuthConfig
 	store      integrationoauth.Store
@@ -83,7 +83,7 @@ const (
 
 func newOAuthHandler(server mcpconfig.Server, store integrationoauth.Store, httpClient *http.Client) *oauthHandler {
 	return &oauthHandler{
-		serverID:   server.ID,
+		tokenID:    server.TokenID(),
 		serverURL:  server.URL,
 		oauth:      server.OAuth,
 		store:      store,
@@ -100,7 +100,7 @@ func (h *oauthHandler) TokenSource(ctx context.Context) (oauth2.TokenSource, err
 		Store:        h.store,
 		HTTPClient:   h.httpClient,
 		ClientConfig: h.refreshClientConfig,
-	}).TokenSource(ctx, mcpconfig.OAuthConnectionID(h.serverID))
+	}).TokenSource(ctx, h.tokenID)
 	if errors.Is(err, integrationoauth.ErrTokenNotFound) {
 		return nil, nil
 	}
@@ -136,7 +136,7 @@ func (h *oauthHandler) AuthorizeFromMetadata(ctx context.Context) error {
 }
 
 func (h *oauthHandler) saveToken(ctx context.Context, tok integrationoauth.Token) error {
-	if err := h.store.SaveToken(ctx, mcpconfig.OAuthConnectionID(h.serverID), tok); err != nil {
+	if err := h.store.SaveToken(ctx, h.tokenID, tok); err != nil {
 		return fmt.Errorf("persist token: %w", err)
 	}
 	h.mu.Lock()

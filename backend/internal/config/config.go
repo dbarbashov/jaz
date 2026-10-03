@@ -72,6 +72,8 @@ func Init() error {
 	_ = viper.BindEnv("jaz.connections.calendar.oauthclientsecret", "JAZ_GOOGLE_CALENDAR_OAUTH_CLIENT_SECRET")
 	_ = viper.BindEnv("jaz.connections.gmail.oauthclientid", "JAZ_GMAIL_OAUTH_CLIENT_ID")
 	_ = viper.BindEnv("jaz.connections.gmail.oauthclientsecret", "JAZ_GMAIL_OAUTH_CLIENT_SECRET")
+	_ = viper.BindEnv("jaz.connections.drive.oauthclientid", "JAZ_GOOGLE_DRIVE_OAUTH_CLIENT_ID")
+	_ = viper.BindEnv("jaz.connections.drive.oauthclientsecret", "JAZ_GOOGLE_DRIVE_OAUTH_CLIENT_SECRET")
 	viper.SetDefault("jaz.connections.chat.grouphistorylimit", app.DefaultChatGroupHistoryLimit)
 	_ = viper.BindEnv("jaz.connections.chat.grouphistorylimit", "JAZ_CHAT_GROUP_HISTORY_LIMIT")
 	if err := viper.ReadInConfig(); err != nil {
