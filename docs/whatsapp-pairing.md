@@ -8,7 +8,8 @@
 - [x] Report passkey requests clearly without logging credentials or implementing authentication.
 - [x] Verify pairing status, error delivery, cancellation and expiry; complete code review.
 - [x] Commit the verified change.
-- [ ] Retry the Business account with phone approval (requires the account owner).
+- [x] Retry the Business account with phone approval and verify live message ingestion.
+- [x] Send an authorised test message through Jaz to the same contact.
 
 The user explicitly deferred passkey authentication on October 3. The existing
 QR/phone approval flow remains the connection method; no browser handoff or
@@ -41,5 +42,11 @@ Verified on October 3:
 - Strict maintainability review: the change stays in the provider's existing QR
   lifecycle; no new endpoint, UI state, browser integration or authenticator.
 
-The account owner must retry Business app → Linked devices → Link a device after
-starting the updated backend. This is the remaining account-compatibility check.
+The account owner linked a brand-new Business account on October 3 at 16:28 UTC.
+The running backend uses the updated whatsmeow revision. At 16:30 UTC, both an
+outgoing phone message and an incoming reply appeared in Jaz's materialized chat
+source, confirming live ingestion. The phone briefly remained on “Logging in”
+after Jaz displayed Connected; the subsequent sync establishes success for this
+attempt. At the user's request, Jaz's `whatsapp_send_message` action then sent a
+test message to the same contact at 16:32:39 UTC and returned a WhatsApp server
+acknowledgement with a message ID. Recipient delivery/read status was not checked.
