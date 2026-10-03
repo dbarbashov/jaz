@@ -4,6 +4,7 @@ import { LayoutDashboard, MessageSquare, Settings } from 'lucide-react'
 import { useState } from 'react'
 import { AppIcon } from '@/components/apps/AppIcon'
 import { BotsGlyph } from '@/components/bots/BotAvatar'
+import { botsQuery } from '@/lib/api/bots'
 import { entrypointKey, mcpEntrypointsQuery } from '@/lib/api/mcp'
 
 export const RAIL_WIDTH = 48
@@ -63,6 +64,11 @@ function TabLabel({ children }: { children: string }) {
 export function NavRail({ tab, onOpenSettings }: { tab: RailTab; onOpenSettings: () => void }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname })
   const sections = useRailSections()
+  const botsUnread = useQuery({
+    ...botsQuery,
+    refetchInterval: 15_000,
+    select: (bots) => bots.some((bot) => bot.unread),
+  }).data
 
   // The Chat tab returns to the thread the user left, the way switching apps
   // does; a fresh /new clears it so the tab lands back on the composer.
@@ -83,8 +89,16 @@ export function NavRail({ tab, onOpenSettings }: { tab: RailTab; onOpenSettings:
         <TabLabel>Chat</TabLabel>
       </Link>
       {sections.map((section) => (
-        <Link key={section.path} {...section.link} aria-label={section.label} className={tabClass(tab === section.path)}>
+        <Link
+          key={section.path}
+          {...section.link}
+          aria-label={section.path === '/bots' && botsUnread ? 'Bots (unread messages)' : section.label}
+          className={tabClass(tab === section.path)}
+        >
           {section.icon}
+          {section.path === '/bots' && botsUnread && (
+            <span aria-hidden className="absolute right-1 top-1 size-1.5 rounded-full bg-primary" />
+          )}
           <TabLabel>{section.label}</TabLabel>
         </Link>
       ))}
