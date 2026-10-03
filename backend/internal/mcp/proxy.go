@@ -78,11 +78,13 @@ func (m *Manager) updateProxyLocked() {
 			name := tools.DefinitionName(tool.definition)
 			next[name] = tool
 			previous, exists := m.proxyCatalog[name]
-			if exists && previous.connection == tool.connection && reflect.DeepEqual(previous.definition, tool.definition) {
+			if exists && previous.connection == tool.connection && reflect.DeepEqual(previous.spec, tool.spec) {
 				continue
 			}
 			changed = true
-			m.proxy.AddTool(&mcpsdk.Tool{Name: name, Description: tool.description, InputSchema: tool.inputSchema}, m.proxyCall(tool))
+			spec := tool.spec
+			spec.Name = name
+			m.proxy.AddTool(&spec, m.proxyCall(tool))
 		}
 	}
 	for name := range m.proxyCatalog {

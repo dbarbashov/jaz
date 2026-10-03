@@ -693,6 +693,7 @@ export interface ArtifactEvent {
 export interface MCPAppEvent {
   server_id: string
   tool: string
+  presented?: boolean
   arguments?: Record<string, unknown>
   result: CallToolResult
 }

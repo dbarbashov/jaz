@@ -103,6 +103,7 @@ type ArtifactEvent struct {
 type MCPAppEvent struct {
 	ServerID  string          `json:"server_id"`
 	Tool      string          `json:"tool"`
+	Presented bool            `json:"presented,omitempty"`
 	Arguments json.RawMessage `json:"arguments,omitempty"`
 	Result    json.RawMessage `json:"result"`
 }

@@ -209,40 +209,58 @@ func WithSessionEvents(store sessionEventAppender, bus sessionEventPublisher) Op
 	}
 }
 
-// proxyCall preserves the remote result and opens entrypoint apps. Linked
-// resources on ordinary tools remain part of the tool's result, without
-// opening an app for every lookup in a batch.
+// A UI declaration makes a tool renderable. An entrypoint or a returned link
+// to that UI presents it; ordinary lookups stay private.
 func (m *Manager) proxyCall(tool remoteTool) mcpsdk.ToolHandler {
 	return func(ctx context.Context, req *mcpsdk.CallToolRequest) (*mcpsdk.CallToolResult, error) {
 		result, err := tool.callRaw(ctx, req)
 		if err == nil && !result.IsError {
-			m.showApp(mcpsession.SessionID(req), tool, req.Params.Arguments, result)
+			if feedback := m.showApp(mcpsession.SessionID(req), tool, req.Params.Arguments, result); feedback != "" {
+				copy := *result
+				copy.Content = append(slices.Clone(result.Content), &mcpsdk.TextContent{Text: feedback})
+				result = &copy
+			}
 		}
 		return result, err
 	}
 }
 
-func (m *Manager) showApp(sessionID string, tool remoteTool, arguments json.RawMessage, result *mcpsdk.CallToolResult) {
+func (m *Manager) showApp(sessionID string, tool remoteTool, arguments json.RawMessage, result *mcpsdk.CallToolResult) string {
 	session := m.session(tool.serverID)
-	if m.eventStore == nil || sessionID == "" || session == nil || !slices.ContainsFunc(session.apps.entrypoints, func(point Entrypoint) bool {
+	if session == nil || session.apps.uris[tool.remoteName] == "" {
+		return ""
+	}
+	present := slices.ContainsFunc(result.Content, func(content mcpsdk.Content) bool {
+		link, ok := content.(*mcpsdk.ResourceLink)
+		return ok && link.URI == session.apps.uris[tool.remoteName] && link.MIMEType == AppMIMEType
+	})
+	if !present && !slices.ContainsFunc(session.apps.entrypoints, func(point Entrypoint) bool {
 		return point.Tool == tool.remoteName
 	}) {
-		return
+		return ""
+	}
+	if m.eventStore == nil || sessionID == "" || (m.AppVisible != nil && !m.AppVisible(sessionID)) {
+		return "Jaz has not displayed this resource in the user's chat. Use the returned data to answer through this turn's delivery channel."
 	}
 	data, err := json.Marshal(result)
 	if err != nil {
-		return
+		return "Jaz could not display this resource. Use the returned data to answer the user."
 	}
 	events := []sessionevents.Event{{
 		SessionID: sessionID,
 		Type:      sessionevents.TypeMCPApp,
-		MCPApp:    &sessionevents.MCPAppEvent{ServerID: tool.serverID, Tool: tool.remoteName, Arguments: arguments, Result: data},
+		MCPApp:    &sessionevents.MCPAppEvent{ServerID: tool.serverID, Tool: tool.remoteName, Presented: present, Arguments: arguments, Result: data},
 		At:        time.Now().UTC(),
 	}}
 	// AppendSessionEvents assigns Seq in place; publish the stored event.
-	if m.eventStore.AppendSessionEvents(sessionID, events...) == nil {
-		m.eventBus.Publish(events[0])
+	if err := m.eventStore.AppendSessionEvents(sessionID, events...); err != nil {
+		return "Jaz could not save this app result for display. Use the returned data to answer the user."
 	}
+	m.eventBus.Publish(events[0])
+	if !present {
+		return ""
+	}
+	return "Jaz has presented this result in the user's chat. The app view is the answer; do not repeat its contents or links in a text message. Add text only for information the view does not contain."
 }
 
 func (m *Manager) appSession(serverID, tool string) (*serverSession, string, error) {

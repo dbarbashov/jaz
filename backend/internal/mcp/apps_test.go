@@ -129,11 +129,18 @@ func TestManagerServesMCPAppEntrypoints(t *testing.T) {
 type recordedEvents struct {
 	mu                  sync.Mutex
 	appended, published []sessionevents.Event
+	err                 error
 }
 
 func (r *recordedEvents) AppendSessionEvents(_ string, events ...sessionevents.Event) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if r.err != nil {
+		return r.err
+	}
+	for i := range events {
+		events[i].Seq = int64(len(r.appended) + i + 1)
+	}
 	r.appended = append(r.appended, events...)
 	return nil
 }
@@ -151,6 +158,16 @@ func TestProxyShowsOnlyExplicitMCPAppsInCallersThread(t *testing.T) {
 		return &mcpsdk.CallToolResult{Meta: mcpsdk.Meta{"color": "#f2c94c"}, IsError: input.Query == "fail"}, map[string]string{"identifier": "AUG-" + input.Query}, nil
 	}
 	mcpsdk.AddTool(remote, &mcpsdk.Tool{Name: "create_issue", Meta: card}, create)
+	mcpsdk.AddTool(remote, &mcpsdk.Tool{Name: "show_selection", Title: "Selected tasks", Meta: card, Annotations: &mcpsdk.ToolAnnotations{ReadOnlyHint: true}},
+		func(ctx context.Context, req *mcpsdk.CallToolRequest, input appQueryInput) (*mcpsdk.CallToolResult, map[string]string, error) {
+			result, out, err := create(ctx, req, input)
+			uri := "ui://tasks/issue"
+			if input.Query == "wrong-resource" {
+				uri = "ui://other/app"
+			}
+			result.Content = []mcpsdk.Content{&mcpsdk.ResourceLink{URI: uri, Name: "Tasks", MIMEType: AppMIMEType}}
+			return result, out, err
+		})
 	mcpsdk.AddTool(remote, &mcpsdk.Tool{Name: "show_issue", Meta: mcpsdk.Meta{
 		"ui":        map[string]any{"resourceUri": "ui://tasks/issue"},
 		"openai/ui": map[string]any{"entrypoints": []map[string]any{{"type": "thread"}}},
@@ -180,7 +197,7 @@ func TestProxyShowsOnlyExplicitMCPAppsInCallersThread(t *testing.T) {
 		t.Cleanup(func() { _ = session.Close() })
 		return session
 	}
-	call := func(session *mcpsdk.ClientSession, tool, query string) {
+	call := func(session *mcpsdk.ClientSession, tool, query string) *mcpsdk.CallToolResult {
 		t.Helper()
 		result, err := session.CallTool(context.Background(), &mcpsdk.CallToolParams{Name: "mcp_Tasks_" + tool, Arguments: map[string]any{"query": query}})
 		if err != nil {
@@ -189,28 +206,62 @@ func TestProxyShowsOnlyExplicitMCPAppsInCallersThread(t *testing.T) {
 		if result.IsError != (query == "fail") || result.Meta["color"] != "#f2c94c" || fmt.Sprint(result.StructuredContent) != "map[identifier:AUG-"+query+"]" {
 			t.Fatalf("proxy changed %s result: %+v", tool, result)
 		}
+		return result
 	}
 	agent := connect(mcpconfig.Header{Name: mcpsession.HeaderName, Value: "thread-1"})
+	catalog, err := agent.ListTools(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, spec := range catalog.Tools {
+		if spec.Name == "mcp_Tasks_show_selection" && (readToolMeta(spec).UI.ResourceURI != "ui://tasks/issue" || spec.Title != "Selected tasks" || spec.Annotations == nil || !spec.Annotations.ReadOnlyHint || spec.OutputSchema == nil) {
+			t.Fatalf("proxy lost presentation metadata: %+v", spec)
+		}
+	}
 	call(agent, "create_issue", "12")
-	call(agent, "show_issue", "12")
+	if result := call(agent, "show_issue", "12"); len(result.Content) != 1 {
+		t.Fatal("an app launcher without an explicit resource claimed inline delivery")
+	}
 	call(agent, "list_issues", "13")
 	call(agent, "create_issue", "fail")
 	call(agent, "show_issue", "fail")
 	call(connect(), "create_issue", "14")
 	call(connect(), "show_issue", "14")
+	shown := call(agent, "show_selection", "15")
+	if len(shown.Content) != 2 || !strings.Contains(shown.Content[1].(*mcpsdk.TextContent).Text, "Jaz has presented") {
+		t.Fatalf("agent did not receive presentation feedback: %+v", shown)
+	}
+	call(agent, "show_selection", "fail")
+	if result := call(agent, "show_selection", "wrong-resource"); len(result.Content) != 1 {
+		t.Fatal("an unrelated resource was treated as the tool's UI")
+	}
+	manager.AppVisible = func(string) bool { return false }
+	private := call(agent, "show_selection", "16")
+	if !strings.Contains(private.Content[1].(*mcpsdk.TextContent).Text, "has not displayed") {
+		t.Fatalf("private turn claimed public delivery: %+v", private)
+	}
+	manager.AppVisible = nil
+	events.err = errors.New("disk full")
+	failed := call(agent, "show_selection", "17")
+	if !strings.Contains(failed.Content[1].(*mcpsdk.TextContent).Text, "could not save") || failed.IsError {
+		t.Fatalf("display failure lost the successful tool result: %+v", failed)
+	}
 
 	events.mu.Lock()
 	defer events.mu.Unlock()
-	if len(events.appended) != 1 || len(events.published) != 1 {
-		t.Fatalf("only the thread's successful show_issue opens its app: appended %d, published %d", len(events.appended), len(events.published))
+	if len(events.appended) != 2 || len(events.published) != 2 || events.published[1].Seq != events.appended[1].Seq {
+		t.Fatalf("only successful presentations open apps: appended %d, published %d", len(events.appended), len(events.published))
 	}
 	event := events.appended[0]
 	var result mcpsdk.CallToolResult
 	if err := json.Unmarshal(event.MCPApp.Result, &result); err != nil {
 		t.Fatal(err)
 	}
-	if event.SessionID != "thread-1" || event.Type != sessionevents.TypeMCPApp || event.MCPApp.ServerID != "srv1" || event.MCPApp.Tool != "show_issue" ||
+	if event.SessionID != "thread-1" || event.Type != sessionevents.TypeMCPApp || event.MCPApp.ServerID != "srv1" || event.MCPApp.Tool != "show_issue" || event.MCPApp.Presented || !events.appended[1].MCPApp.Presented ||
 		string(event.MCPApp.Arguments) != `{"query":"12"}` || result.Meta["color"] != "#f2c94c" || fmt.Sprint(result.StructuredContent) != "map[identifier:AUG-12]" {
 		t.Fatalf("event = %+v, result = %+v", event, result)
+	}
+	if err := json.Unmarshal(events.appended[1].MCPApp.Result, &result); err != nil || len(result.Content) != 1 {
+		t.Fatalf("host feedback leaked into the app's payload: %+v, %v", result, err)
 	}
 }

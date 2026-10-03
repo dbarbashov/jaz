@@ -43,11 +43,13 @@ describe('bot chat log', () => {
     }
   })
 
-  test('apps from group and routine turns stay private until the user asks again', () => {
+  test('routine presentations reach the user while group and peer work stays private', () => {
     const app = { server_id: 'crm', tool: 'show_crm', arguments: { path: '/o/deals' }, result: { content: [] } }
-    const events = [said(2, 'Hey.'), woke(3, 'group', 'Team'), event(4, { type: 'mcp_app', mcp_app: app }), woke(5, 'routine', 'Digest'), event(6, { type: 'mcp_app', mcp_app: app }), event(8, { type: 'mcp_app', mcp_app: app })]
+    const tasks = { server_id: 'tasks', tool: 'show_issues', presented: true, arguments: {}, result: { content: [{ type: 'resource_link', uri: 'ui://tasks/issue', name: 'Tasks', mimeType: 'text/html;profile=mcp-app' }] } }
+    const events = [said(2, 'Hey.'), woke(3, 'group', 'Team'), event(4, { type: 'mcp_app', mcp_app: app }), woke(4, 'message_received', 'Pip'), event(4, { type: 'mcp_app', mcp_app: app }), woke(5, 'routine', 'Digest'), event(6, { type: 'mcp_app', mcp_app: tasks }), wrote(6, 'Private completion.'), event(8, { type: 'mcp_app', mcp_app: tasks }), wrote(9, 'Repeated task list.')]
     const { entries } = botChat([user(1, 1, 'hi'), user(2, 7, 'show me deals')], events, self, false, opens)
-    expect(entries.map((entry) => entry.kind)).toEqual(['user', 'bot', 'user', 'app'])
+    expect(entries.map((entry) => entry.kind)).toEqual(['user', 'bot', 'activity', 'app', 'user', 'app'])
+    expect(entries[3].app).toBe(tasks)
     expect(entries.at(-1).at).toBe(at(8))
   })
 

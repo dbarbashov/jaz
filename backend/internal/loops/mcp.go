@@ -94,7 +94,7 @@ func (t *MCPTools) AddTo(server *mcp.Server) {
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "loop_run",
 		Title:       "Run Jaz loop now",
-		Description: "Start a manual run for a Jaz loop.",
+		Description: "Queue a manual run for a Jaz loop. Returns before the work finishes. A bot-owned routine runs in a separate turn and delivers its own outcome; after starting it, leave the work and answer to that turn.",
 	}, t.Run)
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "loop_delete",
@@ -275,7 +275,10 @@ func (t *MCPTools) Run(ctx context.Context, _ *mcp.CallToolRequest, input MCPIDI
 		return nil, Run{}, err
 	}
 	run, err := t.service.RunNow(ctx, id)
-	return nil, run, err
+	if err != nil {
+		return nil, run, err
+	}
+	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: "Run queued. The routine will do the work in its own turn; do not repeat that work or its answer in this turn."}}}, run, nil
 }
 
 type MCPDeleteOutput struct {

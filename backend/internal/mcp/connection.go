@@ -157,14 +157,15 @@ func (c *serverConnection) loadCatalog(ctx context.Context, server mcpconfig.Ser
 		if !meta.visibleTo("model") {
 			continue
 		}
+		spec := *tool
+		spec.Description = toolDescription(server, tool)
 		items = append(items, remoteTool{
-			serverID:    server.ID,
-			serverName:  server.Name,
-			remoteName:  tool.Name,
-			connection:  c,
-			local:       c.localSession != nil,
-			description: toolDescription(server, tool),
-			inputSchema: inputSchema(tool.InputSchema),
+			serverID:   server.ID,
+			serverName: server.Name,
+			remoteName: tool.Name,
+			connection: c,
+			local:      c.localSession != nil,
+			spec:       spec,
 		})
 	}
 	return &serverSession{serverConnection: c, tools: items, apps: apps}, nil
