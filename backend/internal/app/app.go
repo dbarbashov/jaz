@@ -109,8 +109,9 @@ type MemoryConfig struct {
 }
 
 type ConnectionsConfig struct {
-	Calendar CalendarConnectionConfig
-	Gmail    GmailConnectionConfig
+	Calendar GoogleConnectionConfig
+	Drive    GoogleConnectionConfig
+	Gmail    GoogleConnectionConfig
 	Slack    SlackConnectionConfig
 	Chat     ChatConnectionConfig
 	// OAuthRedirectBrokerURL overrides the hosted broker for providers that
@@ -118,12 +119,7 @@ type ConnectionsConfig struct {
 	OAuthRedirectBrokerURL string
 }
 
-type CalendarConnectionConfig struct {
-	OAuthClientID     string
-	OAuthClientSecret string
-}
-
-type GmailConnectionConfig struct {
+type GoogleConnectionConfig struct {
 	OAuthClientID     string
 	OAuthClientSecret string
 }

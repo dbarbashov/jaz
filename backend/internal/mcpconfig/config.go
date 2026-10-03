@@ -42,8 +42,10 @@ type Server struct {
 	BearerToken       string      `json:"bearer_token,omitempty"`
 	Headers           []Header    `json:"headers,omitempty"`
 	OAuth             OAuthConfig `json:"oauth,omitempty"`
-	CreatedAt         time.Time   `json:"created_at"`
-	UpdatedAt         time.Time   `json:"updated_at"`
+	// Connection-backed servers reuse the account's refreshable OAuth grant.
+	TokenConnectionID string    `json:"-"`
+	CreatedAt         time.Time `json:"created_at"`
+	UpdatedAt         time.Time `json:"updated_at"`
 }
 
 // UsesBearer reports whether the server authenticates with a bearer token,

@@ -61,6 +61,7 @@ func (h ConnectHandler) Callback(w http.ResponseWriter, r *http.Request) {
 		writeCallbackHTML(w, http.StatusBadRequest, "Connection failed", err.Error(), false)
 		return
 	}
+	refreshMCP(h.MCP)
 	writeCallbackHTML(w, http.StatusOK, "Connected", "You can close this tab and return to Jaz.", true)
 }
 

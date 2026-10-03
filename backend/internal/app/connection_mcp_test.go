@@ -54,8 +54,8 @@ func TestConnectionMCPServerReaderInjectsTokenBackedSlack(t *testing.T) {
 	if got.ID != "slack:acme-u1" || got.URL != slackconnector.RemoteMCPURL || got.Name != "acme-augustinas" || !got.Enabled {
 		t.Fatalf("server = %#v", got)
 	}
-	if len(got.Headers) != 1 || got.Headers[0].Name != "Authorization" || got.Headers[0].Value != "Bearer xoxp-1" {
-		t.Fatalf("headers = %#v", got.Headers)
+	if len(got.Headers) != 0 || got.TokenConnectionID != "slack:acme-u1" {
+		t.Fatalf("account grant = %q, headers = %#v", got.TokenConnectionID, got.Headers)
 	}
 }
 

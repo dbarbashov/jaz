@@ -126,7 +126,7 @@ func (m *Manager) connectionKey(ctx context.Context, server mcpconfig.Server) ([
 	}
 	var token integrationoauth.Token
 	if m.tokens != nil && !m.hasLocalServer(server.ID) {
-		token, _, err = m.tokens.LoadToken(ctx, mcpconfig.OAuthConnectionID(server.ID))
+		token, _, err = m.tokens.LoadToken(ctx, server.TokenID())
 		if err != nil {
 			return [32]byte{}, err
 		}
@@ -136,7 +136,8 @@ func (m *Manager) connectionKey(ctx context.Context, server mcpconfig.Server) ([
 		Headers []mcpconfig.Header
 		OAuth   mcpconfig.OAuthConfig
 		Token   integrationoauth.Token
-	}{server.URL, headers, server.OAuth, token})
+		TokenID string
+	}{server.URL, headers, server.OAuth, token, server.TokenID()})
 	return sha256.Sum256(data), err
 }
 

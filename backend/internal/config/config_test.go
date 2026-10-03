@@ -92,6 +92,8 @@ openai:
 	t.Setenv("OPENROUTER_API_KEY", "openrouter-key")
 	t.Setenv("OPENAI_API_KEY", "openai-key")
 	t.Setenv("JAZ_SKILLS_DISABLE_SYNC", "true")
+	t.Setenv("JAZ_GOOGLE_DRIVE_OAUTH_CLIENT_ID", "drive-client")
+	t.Setenv("JAZ_GOOGLE_DRIVE_OAUTH_CLIENT_SECRET", "drive-secret")
 
 	cfg, err := Load()
 	if err != nil {
@@ -115,5 +117,8 @@ openai:
 	}
 	if cfg.Jaz.Connections.Chat.GroupHistoryLimit != 123 {
 		t.Fatalf("group history limit = %d", cfg.Jaz.Connections.Chat.GroupHistoryLimit)
+	}
+	if cfg.Jaz.Connections.Drive.OAuthClientID != "drive-client" || cfg.Jaz.Connections.Drive.OAuthClientSecret != "drive-secret" {
+		t.Fatal("Google Drive OAuth client overrides were not loaded")
 	}
 }
