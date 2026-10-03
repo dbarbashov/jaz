@@ -1,9 +1,9 @@
-import { app, autoUpdater as nativeAutoUpdater, type BrowserWindow, ipcMain } from 'electron'
+import { app, autoUpdater as nativeAutoUpdater, type BrowserWindow, ipcMain, powerMonitor } from 'electron'
 import { autoUpdater } from 'electron-updater'
 import type { UpdateStatus } from '../shared/update'
 import { terminateLocalBackend } from './backend'
 
-const UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000
+const UPDATE_CHECK_INTERVAL_MS = 5 * 60 * 1000
 
 type InstallUpdateResult = {
   ok: boolean
@@ -109,6 +109,7 @@ export function createUpdateController(getMainWindow: () => BrowserWindow | null
       setTimeout(check, 10_000).unref()
       timer = setInterval(check, UPDATE_CHECK_INTERVAL_MS)
       timer.unref()
+      powerMonitor.on('resume', () => check())
     },
   }
 }
