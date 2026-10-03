@@ -76,6 +76,8 @@ type Manager struct {
 	// thread (WithSessionEvents).
 	eventStore sessionEventAppender
 	eventBus   sessionEventPublisher
+	// AppVisible, when set at startup, keeps a bot's work for other bots private.
+	AppVisible func(string) bool
 }
 
 type tokenStore interface {
@@ -125,14 +127,13 @@ type serverSession struct {
 }
 
 type remoteTool struct {
-	serverID    string
-	serverName  string
-	remoteName  string
-	description string
-	inputSchema map[string]any
-	definition  tools.Definition
-	connection  *serverConnection
-	local       bool
+	serverID   string
+	serverName string
+	remoteName string
+	spec       mcpsdk.Tool
+	definition tools.Definition
+	connection *serverConnection
+	local      bool
 }
 
 type refreshResult struct {
@@ -302,7 +303,7 @@ func (m *Manager) refreshServerList(ctx context.Context, servers []mcpconfig.Ser
 			} else {
 				name = mappedToolName(result.server, rt.remoteName, usedNames)
 			}
-			rt.definition = tools.Function(name, rt.description, false, rt.inputSchema)
+			rt.definition = tools.Function(name, rt.spec.Description, false, inputSchema(rt.spec.InputSchema))
 			kept = append(kept, rt)
 			if builtin {
 				builtinTools = append(builtinTools, rt)
@@ -464,7 +465,7 @@ func serverToolViews(items []remoteTool) []mcpconfig.ServerTool {
 		out = append(out, mcpconfig.ServerTool{
 			Name:        name,
 			RemoteName:  remoteName,
-			Description: item.description,
+			Description: item.spec.Description,
 		})
 	}
 	return out

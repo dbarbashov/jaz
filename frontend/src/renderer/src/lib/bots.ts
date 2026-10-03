@@ -1,6 +1,6 @@
 import type { ACPPermission, Bot, BotActivityEvent, BotAvatar, BotColor, BotShape, ChatMessage, MCPAppEvent, MCPEntrypoint, SessionEvent } from '@/lib/api/types'
 import { messageText } from '@/lib/messageText'
-import { isAppEntrypoint } from '@/lib/mcpApps'
+import { isPresentedApp } from '@/lib/mcpApps'
 import { hasPermissionSurface } from '@/lib/sessionPermissions'
 import { type SpawnedThreadView, threadRunning } from '@/lib/spawnedThreads'
 
@@ -112,10 +112,9 @@ type ChatTurn = {
 export type BotWork = { doing?: string; note?: string }
 
 // A bot's chat, read from its thread in one pass: what people typed, what bots
-// sent with send_message, apps it opened in user turns, questions it asks with
-// their answers, and activity rows. Everything else is private work, including
-// the cards an app's lookup tools return: only an app's own open tool, one of
-// `entrypoints`, puts it in front of the user. A finished user turn without public output shows its
+// sent with send_message, presented apps, questions with their answers, and
+// activity rows. Lookups and work for other bots stay private.
+// A finished user turn without public output shows its
 // last written reply, so an answer is never lost. `doing`
 // names what the bot is busy with when a group, another bot or a routine
 // opened its latest turn, whose output lands elsewhere; `note` is the last line
@@ -160,9 +159,9 @@ export function botChat(
       if (opens) close()
       if (activity.kind === 'message_sent' || activity.kind === 'message_received') entries.push({ kind: 'activity', key, at, event })
       if (opens) turn = { at, user: false, spoke: false, activity }
-    } else if (event.type === 'mcp_app' && event.mcp_app && turn?.user && isAppEntrypoint(event.mcp_app, entrypoints)) {
+    } else if (event.type === 'mcp_app' && event.mcp_app && (event.mcp_app.presented || turn?.user || turn?.activity?.kind === 'routine') && isPresentedApp(event.mcp_app, entrypoints)) {
       entries.push({ kind: 'app', key, at, app: event.mcp_app })
-      turn.spoke = true
+      if (turn) turn.spoke = true
     } else if (event.type === 'permission_request' && event.permission && hasPermissionSurface(event.permission)) {
       // A question asked again replaces its card; the latest one is answered.
       const asked = questions.get(event.permission.id)

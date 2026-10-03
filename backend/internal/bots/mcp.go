@@ -33,7 +33,7 @@ func (t *MCPTools) AddBotTo(server *mcp.Server) {
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "send_message",
 		Title:       "Send a chat message",
-		Description: "Send a chat message as yourself. It is the only thing anyone sees from you. In a group chat turn it posts to the group, when answering a bot it goes to that bot, and otherwise it reaches the user in your chat.",
+		Description: "Send a text message as yourself. In a group chat turn it posts to the group, when answering a bot it goes to that bot, and otherwise it reaches the user in your chat. App presentation tools can also deliver a visible answer; do not repeat a result the host has already presented.",
 	}, t.Send)
 }
 

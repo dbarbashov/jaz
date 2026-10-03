@@ -202,6 +202,7 @@ func TestMCPAppEventRoundTripsThroughContentColumn(t *testing.T) {
 	app := sessionevents.MCPAppEvent{
 		ServerID:  "srv1",
 		Tool:      "create_issue",
+		Presented: true,
 		Arguments: json.RawMessage(`{"title":"Ship"}`),
 		Result:    json.RawMessage(`{"content":[],"structuredContent":{"identifier":"AUG-12"},"_meta":{"jaz-tasks/stateColor":"#f2c94c"}}`),
 	}

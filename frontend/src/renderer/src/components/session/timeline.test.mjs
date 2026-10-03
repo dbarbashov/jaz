@@ -10,6 +10,9 @@ test('batch lookup apps stay off the timeline while explicit opens and tool hist
   const lookup = { id: 'lookup', title: 'get_record', status: 'completed' }
   const work = acpEvent('thread', 'acp', 1, { tool_calls: [lookup] })
   const opened = app(505, 'show_crm')
+  const selected = app(508, 'show_issues', 'tasks')
+  selected.mcp_app.presented = true
+  selected.mcp_app.result.content.push({ type: 'resource_link', uri: 'ui://tasks/issue', name: 'Tasks', mimeType: 'text/html;profile=mcp-app' })
   const answer = { session_id: 'thread', type: 'acp_message', seq: 507, at: at(507), content: 'All records verified.' }
   const events = [
     work,
@@ -17,6 +20,7 @@ test('batch lookup apps stay off the timeline while explicit opens and tool hist
     opened,
     app(506, 'show_crm', 'different-server'),
     answer,
+    selected,
   ]
   const entrypoints = [{ server_id: 'crm', tool: 'show_crm', type: 'thread', title: 'Customers' }]
   for (const grouped of [false, true]) {
@@ -24,10 +28,10 @@ test('batch lookup apps stay off the timeline while explicit opens and tool hist
       const timeline = buildTimeline([], events, 'thread', grouped, catalog)
       expect(timeline.chronological[0].entries[0].call).toBe(lookup)
       expect(timeline.chronological.filter((item) => item.kind === 'event').map((item) => item.event))
-        .toEqual(catalog.length ? [opened, answer] : [answer])
+        .toEqual(catalog.length ? [opened, answer, selected] : [answer, selected])
     }
   }
-  expect(events.filter((event) => event.type === 'mcp_app')).toHaveLength(505)
+  expect(events.filter((event) => event.type === 'mcp_app')).toHaveLength(506)
 })
 
 test('questions stay inline and visible before and after resolution while approvals remain anchored', () => {

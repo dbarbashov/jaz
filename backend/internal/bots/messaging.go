@@ -26,6 +26,12 @@ type voice struct {
 	said  []string
 }
 
+func (s *Service) AppVisible(threadID string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.voices[threadID] == nil
+}
+
 // Message sends text from a thread to a bot or a group, named by id, mention
 // target or name. A bot answers in a turn of its own and the answer returns to
 // the sender as a new turn; a group gets the text as a post and its members

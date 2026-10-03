@@ -480,11 +480,21 @@ func TestMessageRelaysReplyToSender(t *testing.T) {
 	world.addBot("egg", "dr eggbot")
 	service := newTestService(world)
 	world.replies["egg"] = []string{"Grok on the temporal harness."}
+	held := make(chan struct{})
+	world.held["egg"] = held
 
 	if err := service.Message("gimli", "egg", "What model do you run on?"); err != nil {
 		t.Fatal(err)
 	}
+	waitUntil(t, func() bool { return !service.AppVisible("egg") })
+	if !service.AppVisible("gimli") {
+		t.Error("the sender's user chat was hidden with the private recipient turn")
+	}
+	close(held)
 	waitUntil(t, func() bool { return world.promptCount("gimli") == 1 })
+	if !service.AppVisible("egg") {
+		t.Error("the finished private turn kept later app results hidden")
+	}
 	world.mu.Lock()
 	defer world.mu.Unlock()
 	if asked := world.prompts["egg"][0]; !strings.HasPrefix(asked, "[message from Gimli]") || !strings.Contains(asked, "What model do you run on?") {
