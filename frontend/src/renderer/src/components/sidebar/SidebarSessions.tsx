@@ -225,19 +225,17 @@ function UngroupedSessions({
       dragListener={false}
     >
       <p
-        className={`flex h-[30px] items-center gap-2 px-2.5 max-sm:h-11 max-sm:gap-2.5 max-sm:px-3 ${GROUP_LABEL_CLASS}`}
+        className={`flex h-[30px] items-center px-2.5 max-sm:h-11 max-sm:px-3 ${SECTION_LABEL_CLASS}`}
       >
-        <span className="grid size-[18px] shrink-0 place-items-center">
-          <Folder size={15} className="text-ink-3" />
-        </span>
-        No project
+        Recents
       </p>
-      <SessionRows items={block.items} shortcutByID={shortcutByID} shortcutMode={shortcutMode} />
-      {block.items.length < block.total ? (
-        <button type="button" onClick={onShowMore} className={`${MORE_ACTION_CLASS} pl-9 max-sm:pl-10`}>
-          Show More
-        </button>
-      ) : null}
+      <RecentSessionList
+        items={block.items}
+        total={block.total}
+        onShowMore={onShowMore}
+        shortcutByID={shortcutByID}
+        shortcutMode={shortcutMode}
+      />
     </Reorder.Item>
   )
 }
