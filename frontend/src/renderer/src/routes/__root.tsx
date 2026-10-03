@@ -344,7 +344,7 @@ function RootLayout() {
                     {tab === '/bots' ? (
                       <BotsPanel mobile={isMobile} />
                     ) : (
-                      <ChatPanel open={panelOpen} mobile={isMobile} onOpenCommandPalette={() => setCommandOpen(true)} />
+                      <ChatPanel open={panelOpen && tab === 'chat'} mobile={isMobile} onOpenCommandPalette={() => setCommandOpen(true)} />
                     )}
                   </Sidebar>
                 </motion.div>

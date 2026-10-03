@@ -44,8 +44,8 @@ const SHORTCUTS: Shortcut[] = [
     keys: ['⌘', ']'],
   },
   {
-    command: 'Open sidebar thread',
-    description: 'Jump to the numbered visible thread while holding Command.',
+    command: 'Navigate sidebar',
+    description: 'In Chat, open the numbered visible thread. Elsewhere, switch tabs in sidebar order: Chat, Bots, Boards, connected apps, then Settings.',
     keys: ['⌘', '1-9'],
   },
   {

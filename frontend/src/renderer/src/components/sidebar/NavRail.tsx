@@ -1,11 +1,13 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link, linkOptions, useRouterState } from '@tanstack/react-router'
 import { LayoutDashboard, MessageSquare, Settings } from 'lucide-react'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { AppIcon } from '@/components/apps/AppIcon'
 import { BotsGlyph } from '@/components/bots/BotAvatar'
 import { botsQuery } from '@/lib/api/bots'
 import { entrypointKey, mcpEntrypointsQuery } from '@/lib/api/mcp'
+import { modalDialogOpen } from '@/lib/dom/modal'
+import { useWindowEvent } from '@/lib/hooks/useWindowEvent'
 
 export const RAIL_WIDTH = 48
 
@@ -50,18 +52,20 @@ const tabClass = (active: boolean) =>
   `${TAB_CLASS} ${active ? 'bg-list-active text-ink' : 'text-ink-2 hover:bg-list-hover hover:text-ink'}`
 
 // The rail is icon-only, so each tab names itself beside the icon on hover.
-function TabLabel({ children }: { children: string }) {
+function TabLabel({ children, shortcut }: { children: string; shortcut?: number }) {
   return (
     <span
       aria-hidden
       className="pointer-events-none absolute left-full top-1/2 z-tooltip ml-2 -translate-y-1/2 whitespace-nowrap rounded-lg bg-surface-2 px-2 py-1 text-[12px] font-medium text-ink opacity-0 shadow-raised ring-1 ring-border/70 transition-opacity duration-100 group-hover:opacity-100 group-hover:delay-150 group-focus-visible:opacity-100"
     >
       {children}
+      {shortcut && shortcut <= 9 ? <kbd className="ml-2 font-sans text-ink-3">⌘{shortcut}</kbd> : null}
     </span>
   )
 }
 
 export function NavRail({ tab, onOpenSettings }: { tab: RailTab; onOpenSettings: () => void }) {
+  const rail = useRef<HTMLElement>(null)
   const pathname = useRouterState({ select: (s) => s.location.pathname })
   const sections = useRailSections()
   const botsUnread = useQuery({
@@ -77,8 +81,18 @@ export function NavRail({ tab, onOpenSettings }: { tab: RailTab; onOpenSettings:
   const current = session ?? (pathname === '/new' ? undefined : lastSession)
   if (current !== lastSession) setLastSession(current)
 
+  useWindowEvent('keydown', (event) => {
+    if (!event.metaKey || event.defaultPrevented || event.altKey || event.ctrlKey || event.shiftKey || event.repeat) return
+    if (!/^[1-9]$/.test(event.key) || modalDialogOpen(tab === 'settings' ? 1 : 0)) return
+    const target = rail.current?.querySelectorAll<HTMLElement>('a, button')[Number(event.key) - 1]
+    if (!target) return
+    event.preventDefault()
+    target.focus({ preventScroll: true })
+    target.click()
+  }, tab !== 'chat')
+
   return (
-    <nav aria-label="Sections" style={{ width: RAIL_WIDTH }} className="flex shrink-0 flex-col items-center gap-2 pb-2 pt-[5px] max-sm:hidden">
+    <nav ref={rail} aria-label="Sections" style={{ width: RAIL_WIDTH }} className="flex shrink-0 flex-col items-center gap-2 pb-2 pt-[5px] max-sm:hidden">
       <Link
         to={lastSession ? '/sessions/$sessionId' : '/new'}
         params={lastSession ? { sessionId: lastSession } : {}}
@@ -86,9 +100,9 @@ export function NavRail({ tab, onOpenSettings }: { tab: RailTab; onOpenSettings:
         className={tabClass(tab === 'chat')}
       >
         <MessageSquare aria-hidden />
-        <TabLabel>Chat</TabLabel>
+        <TabLabel shortcut={tab !== 'chat' ? 1 : undefined}>Chat</TabLabel>
       </Link>
-      {sections.map((section) => (
+      {sections.map((section, index) => (
         <Link
           key={section.path}
           {...section.link}
@@ -99,7 +113,7 @@ export function NavRail({ tab, onOpenSettings }: { tab: RailTab; onOpenSettings:
           {section.path === '/bots' && botsUnread && (
             <span aria-hidden className="absolute right-1 top-1 size-1.5 rounded-full bg-primary" />
           )}
-          <TabLabel>{section.label}</TabLabel>
+          <TabLabel shortcut={tab !== 'chat' ? index + 2 : undefined}>{section.label}</TabLabel>
         </Link>
       ))}
       <button
@@ -109,7 +123,7 @@ export function NavRail({ tab, onOpenSettings }: { tab: RailTab; onOpenSettings:
         className={`${tabClass(tab === 'settings')} mt-auto`}
       >
         <Settings aria-hidden />
-        <TabLabel>Settings</TabLabel>
+        <TabLabel shortcut={tab !== 'chat' ? sections.length + 2 : undefined}>Settings</TabLabel>
       </button>
     </nav>
   )

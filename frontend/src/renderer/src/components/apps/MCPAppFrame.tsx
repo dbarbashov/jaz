@@ -8,6 +8,8 @@ import { callMCPAppTool, deepLinkTarget, entrypointKey, mcpAppQuery, mcpEntrypoi
 import type { MCPAppEvent, MCPEntrypoint } from '@/lib/api/types'
 import { serveFile, type OpenedFile } from '@/lib/mcpAppFiles'
 import { mcpAppHostContext } from '@/lib/mcpAppHost'
+import { mcpAppKeyboard } from '@/lib/mcpAppKeyboard'
+import { useWindowEvent } from '@/lib/hooks/useWindowEvent'
 
 // Every sidebar app stays mounted over the content card, so opening its
 // section is instant and finds the app as the user left it; only the active
@@ -67,6 +69,12 @@ export function MCPAppFrame({ app, active, file, call, deepLink, onDeepLink }: {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const delivered = useEffectEvent(() => onDeepLink?.())
+
+  useWindowEvent('message', (event) => {
+    if (event.source !== frame.current?.contentWindow || document.activeElement !== frame.current) return
+    if (event.data?.type !== 'jaz:navigation-shortcut' || typeof event.data.key !== 'string' || !/^[1-9]$/.test(event.data.key)) return
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: event.data.key, metaKey: true, cancelable: true }))
+  }, active && !inline)
 
   // A deep link to a sidebar app of the app's own server opens that section
   // at the linked page; any other link opens in the browser.
@@ -137,7 +145,7 @@ export function MCPAppFrame({ app, active, file, call, deepLink, onDeepLink }: {
       }
       // Listen before the document loads so the app's first ui/initialize lands.
       await created.connect(new PostMessageTransport(target, target))
-      iframe.srcdoc = html
+      iframe.srcdoc = inline ? html : html + mcpAppKeyboard
       observer = new MutationObserver(() => created.setHostContext(mcpAppHostContext(displayMode)))
       observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'style'] })
       bridge.current = created
