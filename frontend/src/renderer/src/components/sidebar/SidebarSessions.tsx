@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
-import { ChevronDown, Folder, SquarePen } from 'lucide-react'
+import { Folder, SquarePen } from 'lucide-react'
 import { motion, Reorder, type Transition, useDragControls } from 'motion/react'
 import { useEffect, useMemo, useState } from 'react'
 import { AnimatedList, AnimatedListItem } from '@/components/ui/AnimatedList'
@@ -177,11 +177,6 @@ function ProjectGroup({
           <span className={`min-w-0 truncate ${GROUP_LABEL_CLASS}`} title={group.label}>
             {group.label}
           </span>
-          <ChevronDown
-            size={13}
-            className={`-ml-1 shrink-0 text-ink-3 transition-[color,rotate] duration-150 ease-out group-hover/project:text-ink ${collapsed ? '-rotate-90' : ''}`}
-            aria-hidden
-          />
         </motion.button>
         <Link
           to="/new"
@@ -223,6 +218,7 @@ function UngroupedSessions({
       layout="position"
       transition={ROW_SPRING}
       dragListener={false}
+      className="not-first:mt-3"
     >
       <p
         className={`flex h-[30px] items-center px-2.5 max-sm:h-11 max-sm:px-3 ${SECTION_LABEL_CLASS}`}
@@ -266,7 +262,7 @@ function ProjectSessionList({
       axis="y"
       values={blocks.map((block) => block.key)}
       onReorder={onReorder}
-      className="mt-1 flex flex-col gap-3"
+      className="flex flex-col gap-px"
     >
       {blocks.map((block) =>
         block.kind === 'project' ? (

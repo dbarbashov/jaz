@@ -37,7 +37,7 @@ export function SidebarOrganizationMenu({
   const [open, setOpen] = useState(false)
   const close = useCallback(() => setOpen(false), [])
   return (
-    <div className="group/organization flex h-10 items-center justify-between pl-2.5 max-sm:h-11 max-sm:pl-3">
+    <div className="group/organization flex h-[30px] items-center justify-between pl-2.5 max-sm:h-11 max-sm:pl-3">
       <p className="text-[13px] font-medium text-ink-3 max-sm:text-[15px]">
         {organization === 'project' ? 'Projects' : 'Recents'}
       </p>
