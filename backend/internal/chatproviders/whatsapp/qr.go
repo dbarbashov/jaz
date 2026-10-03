@@ -69,9 +69,10 @@ func (p *Provider) StartQR(ctx context.Context) (connections.QRStart, error) {
 			Status:    status.Status,
 			ExpiresAt: status.ExpiresAt,
 			Instructions: []string{
-				"Open WhatsApp on your phone.",
+				"Open WhatsApp or WhatsApp Business on your phone.",
 				"Go to Linked devices.",
 				"Scan this QR code.",
+				"Approve linking on your phone if asked.",
 			},
 		}, nil
 	case <-timer.C:
@@ -175,8 +176,12 @@ func (p *Provider) watchQR(session *qrSession, qrChan <-chan whatsmeow.QRChannel
 		switch item.Event {
 		case whatsmeow.QRChannelEventCode:
 			session.setCode(item.Code, time.Now().UTC().Add(item.Timeout))
-		case whatsmeow.QRChannelSuccess.Event:
-			session.setStatus("scanned", "")
+		case whatsmeow.QRChannelSuccess.Event, whatsmeow.QRChannelErrUnexpectedEvent.Event:
+			// The client event handler owns pairing completion and connection errors.
+			return
+		case whatsmeow.QRChannelEventPasskeyRequest, whatsmeow.QRChannelEventPasskeyResponse:
+			p.failQRSession(p.ctx, session, errors.New("WhatsApp requires passkey verification to link this account. Jaz does not support that step yet."))
+			return
 		case whatsmeow.QRChannelTimeout.Event:
 			session.setStatus("expired", "WhatsApp closed the pairing socket before the code was approved")
 			session.readyOnce.Do(func() { close(session.ready) })
