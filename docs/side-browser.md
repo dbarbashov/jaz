@@ -368,6 +368,8 @@ The actual side-panel controls verify that same-URL navigation, page reads,
 scripts and continuing raw CDP commands reveal the retained agent tab from a
 closed panel, Overview or another browser tab; tab listing and other chats leave
 the current panel alone.
+Browser activity in another conversation is revealed when that conversation is
+next opened. Closing its browser tab clears that pending reveal.
 Abandoned annotations stop intercepting clicks when their panel is hidden;
 the retained surface preserves the resize handle's full hit area.
 With a shortened idle deadline, the fixture verifies native webview destruction,

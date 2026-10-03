@@ -79,7 +79,7 @@ export async function exerciseSidePanelTabs(): Promise<void> {
   const noop = async () => {}
   function Chat({ sessionId }: { sessionId: string }) {
     chatRenders += 1
-    const state = useSidePanelState(sessionId, true)
+    const state = useSidePanelState(sessionId, true, sessionId === 'browser-background' ? false : undefined)
     const currentSession = { ...session, id: sessionId }
     const isMobile = useIsMobile()
     useLayoutEffect(() => {
@@ -597,11 +597,21 @@ await tab.cdp.send('Runtime.evaluate', { expression: 'window.visibilityProbe += 
       throw new Error('Clicking from a closed panel did not reveal the browser and deliver trusted input')
     }
     await window.smoke.capture('browser-activity-reveals-panel')
+    panel.close()
+    await until(() => !panel.open && element.querySelector('[role="separator"]')!.parentElement!.getBoundingClientRect().width === 0)
     await navigate('other-chat')
     await action({ action: 'state' })
     if (panel.open || panel.activeTab?.id !== 'file') {
       throw new Error('Background browser work opened another conversation’s panel')
     }
+    await navigate('tabs')
+    await until(shown)
+    await until(() => Math.abs(document.querySelector<HTMLElement>('[data-browser-session="tabs"]')!.getBoundingClientRect().width - panel.width) < 1)
+    if (webview('tabs').getWebContentsId() !== agentID) {
+      throw new Error('Revealing background browser activity replaced its webview')
+    }
+    await window.smoke.capture('browser-activity-revealed-on-return')
+    await navigate('other-chat')
     await window.smoke.resize(1440, 900)
     await until(() => window.innerWidth === 1440)
     await window.smoke.key('S', ['meta', 'shift'])
@@ -616,6 +626,24 @@ await tab.cdp.send('Runtime.evaluate', { expression: 'window.visibilityProbe += 
     await until(() => !panel.open && panel.mode === 'overview')
     await window.smoke.key('S', ['meta', 'shift'])
     await until(() => panel.open && panel.mode === 'tabs')
+    await navigate('browser-background')
+    await until(async () => (await fetch(`${backend}/v1/sessions/browser-background/browser`, { method: 'POST', body: '{"action":"status"}' })).ok)
+    if (panel.open || panel.tabs.length || webview('browser-background')) {
+      throw new Error('Fresh bot browser fixture did not start closed and empty')
+    }
+    const opened = await fetch(`${backend}/v1/sessions/browser-background/browser`, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'navigate', url: `${location.origin}/target?fresh-bot` }),
+    })
+    if (!opened.ok) {
+      throw new Error(await opened.text())
+    }
+    await until(() => ready('browser-background'))
+    const botPanel = document.querySelector<HTMLElement>('[data-browser-session="browser-background"]')!
+    if (!panel.open || panel.mode !== 'tabs' || panel.activeTab?.id !== 'browser-background' || botPanel.inert || botPanel.getBoundingClientRect().width < 240) {
+      throw new Error('First bot navigation succeeded without showing its browser panel')
+    }
+    await window.smoke.capture('fresh-bot-browser')
   } catch (error) {
     await window.smoke.capture('side-panel-tabs-failure')
     throw error

@@ -20,7 +20,7 @@ test('revealing browser activity preserves the page and only opens its hidden cu
   expect(shown).toEqual(['first', 'first'])
 })
 
-test('leaving a conversation retains its browser without opening another chat panel', () => {
+test('background browsing reveals its retained page on return without opening another chat panel', async () => {
   const sessions = new BrowserSessions()
   const shown = []
   const leave = sessions.bind('first', () => shown.push('first'))
@@ -31,6 +31,38 @@ test('leaving a conversation retains its browser without opening another chat pa
   expect(shown).toEqual(['first'])
   expect(sessions.getSnapshot().find((entry) => entry.id === 'first').target.sourceUrl).toBe('https://example.com/background')
   expect(sessions.getSnapshot().find((entry) => entry.id === 'second').target.sourceUrl).toBe('')
+  const leaveAgain = sessions.bind('first', () => shown.push('returned'))
+  expect(shown).toEqual(['first'])
+  await Promise.resolve()
+  expect(shown).toEqual(['first', 'returned'])
+  leaveAgain()
+  sessions.bind('first', () => shown.push('no new activity'))
+  await Promise.resolve()
+  expect(shown).toEqual(['first', 'returned'])
+})
+
+test('deferred browser reveal follows the current viewer and is discarded when its tab closes or backend changes', async () => {
+  const sessions = new BrowserSessions()
+  const shown = []
+  sessions.open('first', 'https://example.com')
+  const leave = sessions.bind('first', () => shown.push('left'))
+  leave()
+  await Promise.resolve()
+  expect(shown).toEqual([])
+  sessions.bind('first', () => shown.push('current'))
+  await Promise.resolve()
+  expect(shown).toEqual(['current'])
+  sessions.open('closed', 'https://example.com')
+  sessions.bind('closed', () => shown.push('closed'))
+  sessions.close('closed')
+  await Promise.resolve()
+  expect(shown).toEqual(['current'])
+  sessions.open('cleared', 'https://example.com')
+  sessions.bind('cleared', () => shown.push('cleared'))
+  sessions.clear()
+  sessions.bind('cleared', () => shown.push('new backend'))
+  await Promise.resolve()
+  expect(shown).toEqual(['current'])
 })
 
 test('late presentation cleanup cannot detach a newer viewer or change the page target', () => {

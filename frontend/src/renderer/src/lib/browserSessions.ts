@@ -25,6 +25,7 @@ export class BrowserSessions {
   private sessions: BrowserSession[] = []
   private listeners = new Set<() => void>()
   private viewers = new Map<string, () => void | Promise<void>>()
+  private pendingReveals = new Set<string>()
 
   getSnapshot = (): BrowserSession[] => this.sessions
 
@@ -36,6 +37,12 @@ export class BrowserSessions {
   bind(id: string, show: () => void | Promise<void>): () => void {
     this.update(id, {})
     this.viewers.set(id, show)
+    // Binding runs during React's commit; revealing can synchronously render the panel.
+    queueMicrotask(() => {
+      if (this.pendingReveals.has(id)) {
+        this.show(id)
+      }
+    })
     return () => {
       if (this.viewers.get(id) === show) this.viewers.delete(id)
     }
@@ -47,8 +54,13 @@ export class BrowserSessions {
   }
 
   show(id: string): void | Promise<void> {
+    this.pendingReveals.delete(id)
     if (!this.sessions.find((session) => session.id === id)?.presentation) {
-      return this.viewers.get(id)?.()
+      const show = this.viewers.get(id)
+      if (show) {
+        return show()
+      }
+      this.pendingReveals.add(id)
     }
   }
 
@@ -95,6 +107,7 @@ export class BrowserSessions {
   }
 
   close(id: string): void {
+    this.pendingReveals.delete(id)
     const entry = this.sessions.find((session) => session.id === id)
     if (!entry) {
       return
@@ -110,6 +123,7 @@ export class BrowserSessions {
   clear(): void {
     this.sessions = []
     this.viewers.clear()
+    this.pendingReveals.clear()
     this.listeners.forEach((listener) => listener())
   }
 }
