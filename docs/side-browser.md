@@ -144,34 +144,6 @@ the same tab to LinkedIn's `/login` page. Sign in there to enter the feed.
 Successful homepage responses, other paths and background requests keep their
 original behavior.
 
-### Codex Desktop browser runtime
-
-Inspection on September 12, 2026 of the installed Codex Desktop build
-`26.908.40834` (bundle ID `com.openai.codex`, installed as `ChatGPT.app`) found
-`runtimeName: "owl"` in `Resources/owl-electron-app.json` and a native Codex
-Framework built on Chromium `152.0.7977.83`. The JavaScript app retains Electron
-APIs, but the packaged runtime supplies additional native browser functionality.
-
-Its browser uses a persistent `codex-browser-app` partition, native password-manager
-context-menu commands and settings events, Chromium settings pages, and native
-child-tab adoption that preserves the contents created by `window.open`.
-These are runtime capabilities beyond Jaz's standard Electron webview. The
-User-Agent header rewriting found in its JavaScript bundle belongs to its
-app-sandbox integration; it does not establish a Google-login fix for the browser.
-
-[OpenAI describes OWL](https://openai.com/index/building-chatgpt-atlas/) as a
-Chromium service with browser profiles, embedded web contents, native rendering
-and input, extensions and autofill. Matching that architecture inside Jaz
-requires integrating a full browser runtime. Installing Chrome by itself does
-not replace Electron's webview or share its cookies.
-
-Jaz's existing [Chrome extension](browser-extension.md) offers a full-browser
-alternative using a Chrome profile's own sessions and password manager. It opens
-pages in Chrome rather than the Jaz side panel and supports remote Jaz backends.
-The managed Chromium mode instead launches on the backend machine, which may
-be a remote server. Neither path establishes live Google-login success until
-the user completes sign-in and the destination page confirms it.
-
 ## Browser identity
 
 Before creating a side-browser tab, Jaz configures that preview session's native
@@ -292,12 +264,6 @@ conversation action endpoint, sharing input validation with the MCP tools. Raw
 CDP calls go directly to the owned webview's IPC method. Localhost navigation uses the
 server preview proxy when connected to a remote backend.
 
-The Codex 26.903.61454 extraction informed the design: short spring movements,
-long curved movements, rotation/stretch, an idle wiggle and arrival before input.
-Jaz implements its own cursor asset and animation; pixel/frame equality has not
-been established. The extracted service was not bundled: it requires a private
-Node host, native-pipe discovery and companion accessibility WASM.
-
 Provider prompts, compaction, models, authentication and native tools remain
 provider-owned. Browser documentation arrives through the MCP tool result.
 
@@ -331,109 +297,11 @@ Playwright surface should advertise its own supported capabilities.
 
 ## Verification
 
-From `frontend`, run `bun run test:browser` with Go 1.26, Electron and OpenSSL installed.
-`JAZ_ELECTRON_BINARY` can select an existing Electron executable. The command
-builds the production preview/controller/IPC modules into a temporary fixture
-and runs the Go test tagged `browserintegration`. It checks cursor-before-input
-ordering, direct-CDP hover without overlay movement, zero scroll on a scrollable
-page, cancellation (including delayed preview URL resolution), webview ownership, and a
-real MCP script through the production conversation HTTP handler and Electron,
-including session-header binding, observed success after output truncation, and
-an image result. Each Electron process uses a fresh browser profile. The fixture
-reports pending commands on timeout and writes a screenshot into the printed
-temporary artifact directory.
+Run `go test ./...` from `backend`, and `bun test` and `bun run typecheck`
+from `frontend`.
 
-URL checks verify direct local previews without proxy requests, remote/tunnel
-proxying, unchanged public URLs, and actual clicks on **Open in Browser**,
-new-tab links and JavaScript popups through the production external-open handler.
-The fixture records external destinations without launching the user's browser.
-
-The command builds the desktop bundle and tests the actual sandboxed preload.
-A temporary HTTPS login site checks save/update consent, encrypted store reload,
-account selection, deletion, dismissal, origin checks and rapid return-to-login
-navigation, hidden/read-only account identities and pages with multiple forms.
-The production panel controls are exercised with native mouse input:
-opening hides navigation, the browser gets its wider default, and the visible
-divider supports dragging and subsequent keyboard resizing. Frame measurements
-reject snaps when opening, closing and switching Preview; measurements
-through navigation opening, closing and interruption check the browser's width
-and retained surface edges; resized navigation checks the conversation width. Captures cover both
-themes. These password checks use only synthetic credentials in a fresh profile.
-
-The production browser workspace is also exercised across chat and panel
-switches: a pending script continues, hidden pages accept trusted clicks and
-screenshots, another chat opens its first page in the background, and returning
-preserves the original webview, page, dimensions and isolated script bindings.
-The actual side-panel controls verify that same-URL navigation, page reads,
-scripts and continuing raw CDP commands reveal the retained agent tab from a
-closed panel, Overview or another browser tab; tab listing and other chats leave
-the current panel alone.
-Browser activity in another conversation is revealed when that conversation is
-next opened. Closing its browser tab clears that pending reveal.
-Abandoned annotations stop intercepting clicks when their panel is hidden;
-the retained surface preserves the resize handle's full hit area.
-With a shortened idle deadline, the fixture verifies native webview destruction,
-automatic background reload, visible-page retention, and protection during
-running turns, queued work and pending commands. It also verifies that a hidden
-script-only session expires and resumes with fresh bindings without ever creating
-a webview. Unit tests cover late cleanup
-replies racing new work or visibility changes and unavailable status retries.
-The Electron fixture also stalls a status request until its deadline and verifies
-that cleanup recovers and destroys the idle webview on the next check.
-Surfaces remain mounted at the app root. CSS anchors place the selected surface
-over its panel slot; inactive surfaces retain their size and stay transparent
-and inert so Chromium can still render them for capture.
-
-The same real MCP/HTTP/Electron path verifies AX names from labels, hidden and
-password exclusion, stable numeric indices, unchanged/full/diff observations,
-closed shadow roots, nested same-site and cross-site frame clicks and form input,
-hidden-frame exclusion, obscured-target rejection, wrapped text, smooth-scrolling pages, root-index
-scrolling, removed nodes, document replacement and full trees after screenshots.
-Unit checks cover ignored ancestors, frame hierarchy and
-structural moves. The cursor/input and direct-CDP checks run alongside these.
-A real new-tab click verifies that the webview opens a native popup and keeps
-the current preview open. Popup checks cover the opener callback, shared session,
-redirects, blank and nested windows, POST forms, closing and sandbox boundaries.
-
-The same fixture creates synthetic Chrome/Firefox profiles and exercises real
-SQLite reads, Chrome decryption/host verification, cookie flags, data-type
-selection, Keychain denial, unchanged source data and trusted-renderer IPC.
-Password fixtures cover exact microsecond timestamp ordering across both stores,
-existing-login preservation, corrupt/unsupported records and encrypted storage.
-It uses the production import UI to authenticate the side browser with an
-imported HttpOnly test cookie, fills a login with an imported password, and checks
-menu/profile switching and partial-import retry,
-and captures light, dark and narrow layouts. These tests never read the user's
-real sign-ins. Annotation checks select a page element, add its comment to the
-real composer context store, and verify cancellation and callback reattachment. Actual OS Keychain prompts and Windows/Linux runtime behavior
-require platform testing; the fixture runs on the current desktop platform.
-
-The identity check inspects the first navigation and a subsequent fetch on a
-local HTTP server, compares their User-Agent with the page and a worker, checks
-native client hints/language/driver state, and confirms the app session is
-unchanged. It fails against the original Electron/Jaz User-Agent.
-
-`bun test`, `bun run typecheck`, `bun run build:bundle`, and the Go browser,
-HTTP browser, settings, app and server suites cover the remaining contracts.
-Run `bun run test:browser --codex` for an additional native Codex acceptance
-check. It uses the installed `codex` binary and existing ChatGPT OAuth login,
-ignores user configuration, removes inherited `OPENAI_API_KEY`, and preserves
-the provider's default model. Only the disposable fixture's `browser_js` tool
-is pre-approved in that test process; production approval behavior is unchanged.
-The check requires successful native MCP calls, a returned image, a completed
-turn and an exact final success message, then independently verifies the persistent
-JavaScript binding and exactly one trusted button click on the expected page.
-The test log records the CLI version; `codex.jsonl` in the temporary fixture
-directory retains its native events. This verifies browser MCP compatibility;
-full ACP prompt/reload/compaction/auth parity and other live providers need their
-separate release checks.
-
-Chromium screenshot capture can stall. High-level screenshots have a five-second
-deadline and return an error while preserving the browser connection and script
-bindings. A transport regression withholds the screenshot response, then delivers
-it late and verifies that the next command still succeeds. The cause of the
-intermittent Chromium stall remains unresolved; the deadline bounds its effect.
-Native Codex acceptance runs have reproduced the stall after successful AX
-observations and trusted clicks. Passing subsequent runs does not clear this
-reliability issue. Electron's `capturePage()` also stalled in a diagnostic probe;
-it was not retained as an alternative implementation.
+From `frontend`, `bun run test:browser` exercises the MCP/HTTP/Electron path
+with disposable browser profiles. It opens desktop test windows and requires
+Go 1.26, Electron and OpenSSL. `JAZ_ELECTRON_BINARY` selects an existing
+Electron executable. Add `--codex` for native acceptance using the installed
+Codex CLI and existing ChatGPT OAuth login.
