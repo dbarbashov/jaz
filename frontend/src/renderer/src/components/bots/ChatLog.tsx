@@ -74,7 +74,7 @@ export function ChatLog({
           </div>
         )
       })}
-      {working.map(({ bot, doing = 'working', note }) => (
+      {working.map(({ bot, doing = 'working' }) => (
         <div key={bot.id} role="status" className="mt-4 flex items-start gap-2 text-sm text-ink-3 first:mt-0">
           <BotAvatar avatar={bot.avatar} size={22} working />
           <div className="flex min-w-0 flex-col gap-0.5 pt-px">
@@ -83,7 +83,6 @@ export function ChatLog({
                 {bot.name} is {doing}…
               </span>
             </p>
-            {note ? <p className="truncate text-[12px]">{note}</p> : null}
           </div>
         </div>
       ))}

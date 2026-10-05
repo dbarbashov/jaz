@@ -52,11 +52,13 @@ type sendOptions struct {
 	requireActiveGoal     bool
 	waitIdle              bool
 	allowSilence          bool
+	output                *storage.TurnOutput
 }
 
 type InternalTurnRequest struct {
 	Session string
 	Message string
+	Output  *storage.TurnOutput
 	// AllowSilence lets the turn end without a message or tool call, for
 	// turns whose agent may rightly have nothing to say.
 	AllowSilence bool
@@ -81,7 +83,7 @@ func (m *Manager) StartInternalTurn(ctx context.Context, req InternalTurnRequest
 		Session:    req.Session,
 		Message:    req.Message,
 		Completion: CompletionAsync,
-	}, sendOptions{transcript: sendTranscriptHidden, allowSilence: req.AllowSilence})
+	}, sendOptions{transcript: sendTranscriptHidden, allowSilence: req.AllowSilence, output: req.Output})
 }
 
 // StartInternalTurnWhenIdle starts a hidden turn as soon as the thread's
@@ -91,7 +93,7 @@ func (m *Manager) StartInternalTurnWhenIdle(ctx context.Context, req InternalTur
 		Session:    req.Session,
 		Message:    req.Message,
 		Completion: CompletionAsync,
-	}, sendOptions{transcript: sendTranscriptHidden, waitIdle: true, allowSilence: req.AllowSilence})
+	}, sendOptions{transcript: sendTranscriptHidden, waitIdle: true, allowSilence: req.AllowSilence, output: req.Output})
 }
 
 func (m *Manager) Compact(ctx context.Context, req CompactRequest) (Job, error) {
@@ -184,6 +186,8 @@ func (m *Manager) sendOnce(ctx context.Context, req SendRequest, opts sendOption
 	}
 	if err := m.store.StartSessionTurn(job.ID, storage.Turn{
 		PlanRequested: req.PlanRequested, GoalRequested: req.GoalRequested, ActiveOperation: opts.activeOperation,
+		ParentVisible: req.ParentVisible, NotifyParent: req.ParentVisible && req.Completion.propagates() && !req.PlanRequested,
+		AllowSilence: opts.allowSilence, Output: opts.output,
 	}); err != nil {
 		return Job{}, fmt.Errorf("mark session running: %w", err)
 	}
@@ -266,16 +270,23 @@ func (m *Manager) reserveSteer(job *jobState, req SteerRequest, contexts []stora
 	if job.steerMethod == steerUnsupported {
 		return nil, ErrSteeringUnsupported
 	}
-	previous := storage.Turn{
-		PlanRequested: job.turn.planRequested, GoalRequested: job.turn.goalRequested, ActiveOperation: job.ActiveOperation,
+	session, err := m.store.LoadSession(job.ID)
+	if err != nil {
+		return nil, err
 	}
+	if session.Turn == nil {
+		return nil, fmt.Errorf("active turn is missing from storage")
+	}
+	previous := *session.Turn
 	turn := previous
 	turn.GoalRequested = turn.GoalRequested || req.GoalRequested
-	if err := m.store.StartSessionTurn(job.ID, turn); err != nil {
+	turn.ParentVisible = turn.ParentVisible || req.ParentVisible
+	turn.NotifyParent = turn.ParentVisible && job.turn.completion.propagates() && !turn.PlanRequested
+	if err := m.store.SetTurnIntent(job.ID, turn.GoalRequested, turn.ParentVisible, turn.NotifyParent); err != nil {
 		return nil, fmt.Errorf("reserve steering: %w", err)
 	}
 	if err := storage.AppendUserMessage(m.store, job.ID, req.Message, contexts, req.Attachments); err != nil {
-		return nil, errors.Join(fmt.Errorf("append user message: %w", err), m.store.StartSessionTurn(job.ID, previous))
+		return nil, errors.Join(fmt.Errorf("append user message: %w", err), m.store.SetTurnIntent(job.ID, previous.GoalRequested, previous.ParentVisible, previous.NotifyParent))
 	}
 	job.turn.goalRequested = turn.GoalRequested
 	if req.ParentVisible {

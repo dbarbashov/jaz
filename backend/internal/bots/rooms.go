@@ -126,7 +126,7 @@ func (s *Service) memberTurn(groupID, name, member string) error {
 		}
 	}
 	prompt := groupTurnPrompt(name, s.name(member), peers, unseen(events, member))
-	_, err = s.ask(context.Background(), member, groupID, prompt, sessionevents.BotActivityEvent{Kind: "group", Label: name})
+	err = s.ask(context.Background(), member, groupID, prompt, sessionevents.BotActivityEvent{Kind: "group", Label: name})
 	return err
 }
 

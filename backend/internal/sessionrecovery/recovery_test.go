@@ -22,7 +22,7 @@ func (f testRuntime) ResumeInterruptedTurn(ctx context.Context, id string) error
 	return f(ctx, id)
 }
 
-func TestResumeOnlyInterruptedChatsInLatestTen(t *testing.T) {
+func TestResumeInterruptedBotsAndWorkersAlongsideChats(t *testing.T) {
 	store, err := sqlitestore.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -38,6 +38,8 @@ func TestResumeOnlyInterruptedChatsInLatestTen(t *testing.T) {
 		session.Status = storage.StatusInterrupted
 		session.LastAttentionAt = base.Add(time.Duration(i) * time.Minute)
 		switch i {
+		case 4:
+			session.SourceType = storage.SourceBot
 		case 8:
 			session.Status = storage.StatusIdle
 		case 9:
@@ -47,6 +49,7 @@ func TestResumeOnlyInterruptedChatsInLatestTen(t *testing.T) {
 			session.SourceType = storage.SourceLoopRun
 		case 13:
 			session.ParentID = sessions[0].ID
+			session.SourceType = storage.SourceBotWorker
 		case 14:
 			session.Archived = true
 		}
@@ -69,7 +72,7 @@ func TestResumeOnlyInterruptedChatsInLatestTen(t *testing.T) {
 		}
 	}
 	var want []string
-	for _, i := range []int{11, 10, 7, 6, 5, 4, 3, 2} {
+	for _, i := range []int{13, 11, 10, 7, 6, 5, 4, 3, 2, 1, 0} {
 		want = append(want, sessions[i].ID)
 	}
 	if !reflect.DeepEqual(resumed, want) {

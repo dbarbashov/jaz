@@ -21,27 +21,27 @@ type Service struct {
 	// homes is where each bot's own directory lives, named after its id.
 	homes    string
 	threads  Threads
+	queue    TurnQueue
 	routines Routines
 	events   Publisher
 	log      *log.Logger
 
 	mu        sync.Mutex
-	voices    map[string]*voice
 	followUps map[string]int
 	// waking holds a member's group turns in flight, keyed by group and
 	// member, and whether another turn is owed after the current one.
 	waking map[string]bool
 }
 
-func NewService(store Store, homes string, threads Threads, routines Routines, events Publisher, logger *log.Logger) *Service {
+func NewService(store Store, homes string, threads Threads, queue TurnQueue, routines Routines, events Publisher, logger *log.Logger) *Service {
 	return &Service{
 		store:     store,
 		homes:     homes,
 		threads:   threads,
+		queue:     queue,
 		routines:  routines,
 		events:    events,
 		log:       logger.WithPrefix("bots"),
-		voices:    map[string]*voice{},
 		followUps: map[string]int{},
 		waking:    map[string]bool{},
 	}
@@ -77,13 +77,6 @@ func (s *Service) Load(id string) (Bot, error) {
 	return s.view(record, session), nil
 }
 
-// botModels is what a new bot runs on unless it is given a model: a bot takes
-// many short turns, so it starts on a lighter setup than a chat, by agent.
-var botModels = map[string]struct{ model, effort string }{
-	acp.AgentCodex:  {"gpt-6-luna", "medium"},
-	acp.AgentClaude: {"opus[1m]", "medium"},
-}
-
 func (s *Service) Create(ctx context.Context, input CreateBot) (Bot, error) {
 	name := strings.TrimSpace(input.Name)
 	if name == "" {
@@ -106,11 +99,6 @@ func (s *Service) Create(ctx context.Context, input CreateBot) (Bot, error) {
 	})
 	if err != nil {
 		return Bot{}, err
-	}
-	if start, ok := botModels[session.RuntimeRef.Agent]; ok && strings.TrimSpace(input.Model) == "" {
-		if err := s.threads.SetModel(ctx, session.ID, start.model, start.effort); err != nil {
-			return Bot{}, err
-		}
 	}
 	if err := s.store.UpdateSessionTitle(session.ID, name); err != nil {
 		return Bot{}, err

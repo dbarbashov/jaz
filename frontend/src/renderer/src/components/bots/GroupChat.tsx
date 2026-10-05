@@ -44,7 +44,7 @@ export function GroupChat({ group, bots }: { group: Bot; bots: Bot[] }) {
   const { attachScroll, onScroll, pinToBottom } = useThreadAutoScroll({ resetKey: group.id })
   const [detailsOpen, setDetailsOpen] = useState(false)
   const entries = useMemo(
-    () => botChat([], coalesceSessionEvents([...(history.data?.events ?? []), ...live.data]), group, false, []).entries,
+    () => botChat([], coalesceSessionEvents([...(history.data?.events ?? []), ...live.data]), group, []).entries,
     [history.data?.events, live.data, group],
   )
   // Members' status comes from the bot list, polled briskly while the room is

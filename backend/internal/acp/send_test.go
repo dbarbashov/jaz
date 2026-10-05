@@ -122,6 +122,9 @@ func TestReserveSteerDoesNotQueuePromptWhenUserMessageCannotPersist(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
+	if err := store.StartSessionTurn(session.ID, storage.Turn{}); err != nil {
+		t.Fatal(err)
+	}
 	manager := NewManager(rejectingMessageStore{Store: store}, Config{}, nil)
 	job := newIdleJob(session, "fake", "runtime-session", "", ModeState{})
 	job.steerMethod = steerPromptQueueing
