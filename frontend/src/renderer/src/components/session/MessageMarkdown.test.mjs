@@ -63,7 +63,7 @@ test('inline links use website favicons and keep local file icons', async () => 
     }))
 
     expect(html).toContain('href="https://jaz.chat/docs?section=links"')
-    expect(html).toContain('src="https://www.google.com/s2/favicons?domain=jaz.chat&amp;sz=64"')
+    expect(html).toContain('src="https://jaz.chat/favicon.ico"')
     expect(html).toContain('alt=""')
     expect(html).toContain('lucide-file-text')
     expect(html.match(/<img\b/g)).toHaveLength(1)

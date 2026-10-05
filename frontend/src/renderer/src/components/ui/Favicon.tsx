@@ -10,15 +10,24 @@ export const Favicon = memo(function Favicon({
   iconUrl?: string
   className?: string
 }) {
-  const [failedSource, setFailedSource] = useState('')
-  let domain: string
+  const [failedSources, setFailedSources] = useState<string[]>([])
+  let site: URL | undefined
   try {
-    domain = new URL(url).hostname
+    const parsed = new URL(url)
+    if (parsed.protocol === 'https:' || parsed.protocol === 'http:') {
+      site = parsed
+    }
   } catch {
-    domain = ''
+    site = undefined
   }
-  const source = iconUrl || (domain ? `https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=64` : '')
-  if (!source || source === failedSource) return <Globe size={14} className={className} aria-hidden />
+  const source = [
+    iconUrl,
+    site && `${site.origin}/favicon.ico`,
+    site && `https://www.google.com/s2/favicons?domain=${encodeURIComponent(site.hostname)}&sz=64`,
+  ].find((candidate) => candidate && !failedSources.includes(candidate))
+  if (!source) {
+    return <Globe size={14} className={className} aria-hidden />
+  }
   return (
     <img
       src={source}
@@ -27,7 +36,7 @@ export const Favicon = memo(function Favicon({
       height={14}
       loading="lazy"
       draggable={false}
-      onError={() => setFailedSource(source)}
+      onError={() => setFailedSources((previous) => [...previous, source])}
       className={`${className} rounded-sm outline outline-1 outline-black/10 dark:outline-white/10`}
     />
   )
