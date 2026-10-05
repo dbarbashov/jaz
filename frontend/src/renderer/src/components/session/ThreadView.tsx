@@ -7,7 +7,7 @@ import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } fro
 import { BottomDock } from '@/components/session/BottomDock'
 import { UserBubble } from '@/components/session/Bubble'
 import { Composer, PlanDecisionCard } from '@/components/session/Composer'
-import { NativeModelOptions } from '@/components/session/NativeModelOptions'
+import { useNativeSessionControls } from '@/components/session/useNativeSessionControls'
 import { SelectionContextToolbar } from '@/components/session/SelectionContextToolbar'
 import { useComposerContexts } from '@/components/session/useComposerContexts'
 import { FileReaderLinkProvider, MessageMarkdown, PreviewLinkProvider } from '@/components/session/MessageMarkdown'
@@ -362,6 +362,7 @@ export function ThreadView({
     () => (data ? deriveSessionView(data, events.data, overviewData) : undefined),
     [data, events.data, overviewData],
   )
+  const nativeControls = useNativeSessionControls(sessionId, derived?.agentSession?.config_options, queue.sessionRunning)
   if (detail.isPending) {
     return <PendingSessionHistory sessionId={sessionId} initialPrompt={initialPrompt} />
   }
@@ -601,7 +602,8 @@ export function ThreadView({
                     placeholder={placeholder}
                     streaming={sessionRunning}
                     commands={derived.agentSession?.commands ?? undefined}
-                    optionsSlot={<NativeModelOptions sessionId={session.id} options={derived.agentSession?.config_options} disabled={sessionRunning} />}
+                    optionsSlot={nativeControls.menu}
+                    leftSlot={nativeControls.picker}
                     planAvailable={planAvailable}
                     planModeActive={Boolean(live?.planRequested) || planActive}
                     goalControlVisible

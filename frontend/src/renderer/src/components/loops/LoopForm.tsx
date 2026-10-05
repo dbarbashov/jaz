@@ -7,6 +7,7 @@ import { boardsQuery } from '@/lib/api/boards'
 import { agentSettingsQuery } from '@/lib/api/settings'
 import { enabledACPAgents, runtimeModelState } from '@/lib/agentRuntimes'
 import { useModelReasoningState } from '@/lib/modelReasoning'
+import { pickerEffortOptions } from '@/lib/modelPicker'
 import { BoardAssignmentPicker } from './BoardAssignmentPicker'
 import { LoopExamplesPicker } from './LoopExamplesPicker'
 import type { LoopDraft } from './loopDraft'
@@ -269,7 +270,7 @@ function LoopPromptCard({
                   placement="below"
                   onChange={(next) => set({ model: next.model, reasoningEffort: next.effort })}
                   effort={reasoningEffort}
-                  effortOptions={effortOptions}
+                  effortOptions={pickerEffortOptions(effortOptions)}
                 />
               </>
             ) : null}

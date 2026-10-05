@@ -7,6 +7,7 @@ import { enabledACPAgents, runtimeModelState } from '@/lib/agentRuntimes'
 import { agentSettingsQuery } from '@/lib/api/settings'
 import type { AgentSessionState, Bot } from '@/lib/api/types'
 import { useModelReasoningState } from '@/lib/modelReasoning'
+import { pickerEffortOptions } from '@/lib/modelPicker'
 import { useUpdateBot } from './useUpdateBot'
 
 // The bot's agent and model in the composer's picker. A running agent's own
@@ -56,7 +57,7 @@ export function BotAgentSettings({ bot, agentSession, working }: { bot: Bot; age
             value={model}
             effort={reasoning.effectiveReasoningEffort}
             suggestions={reasoning.modelSuggestions}
-            effortOptions={reasoning.reasoningOptions}
+            effortOptions={pickerEffortOptions(reasoning.reasoningOptions)}
             loading={reasoning.modelsLoading}
             disabled={disabled}
             placement="below"

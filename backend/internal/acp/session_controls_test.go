@@ -357,6 +357,76 @@ func TestSetSessionConfigRefusesMidSessionGrokModelChange(t *testing.T) {
 	}
 }
 
+func TestModelConfigChangesDuringActiveTurnPersistAndRestore(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := store.CreateSession(storage.CreateSession{Slug: "active-fast-mode", Runtime: storage.RuntimeACP})
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := NewManager(store, Config{}, nil)
+	defer manager.Close()
+	left, right := net.Pipe()
+	conn := stdio.New(left, left)
+	remote := stdio.New(right, right)
+	defer remote.Close()
+	config := func(value string) json.RawMessage {
+		raw, _ := json.Marshal(map[string]any{"configOptions": []map[string]any{
+			{"id": "fast-mode", "name": "Fast mode", "category": "model_config", "type": "select", "currentValue": value,
+				"options": []map[string]string{{"value": "off", "name": "Off"}, {"value": "on", "name": "On"}}},
+			{"id": "model", "category": "model", "type": "select", "currentValue": "first", "options": []map[string]string{{"value": "first"}, {"value": "second"}}},
+		}})
+		return raw
+	}
+	agent := jsonrpc.NewPeer(remote, jsonrpc.HandlerFunc(func(_ context.Context, req jsonrpc.Request) (json.RawMessage, *jsonrpc.Error) {
+		var params struct {
+			SessionID string `json:"sessionId"`
+			ConfigID  string `json:"configId"`
+			Value     string `json:"value"`
+		}
+		if req.Method != "session/set_config_option" || json.Unmarshal(req.Params, &params) != nil || params.SessionID != "native" || params.ConfigID != "fast-mode" {
+			return nil, jsonrpc.InvalidParams("unexpected config request", nil)
+		}
+		return config(params.Value), nil
+	}))
+	peer := jsonrpc.NewPeer(conn, jsonrpc.HandlerFunc(manager.handleJSONRPC))
+	go agent.Serve(t.Context())
+	go peer.Serve(t.Context())
+	job := &jobState{Job: Job{ID: session.ID, Slug: session.Slug, ACPAgent: AgentCodex, ACPSession: "native"}}
+	manager.addJob(job, newAgentProcess(&agentConn{conn: conn, peer: peer}))
+	manager.applySessionControls(job, config("off"))
+	done := job.startTurn(CompletionInline, false, false)
+	defer manager.finishTurn(done, job)
+	if err := manager.SetSessionConfig(t.Context(), session.ID, "model", "second"); err == nil {
+		t.Fatal("model changed during the active turn")
+	}
+	if err := manager.SetSessionConfig(t.Context(), session.ID, "fast-mode", "turbo"); err == nil {
+		t.Fatal("unadvertised speed accepted")
+	}
+	for _, value := range []string{"on", "off", "on"} {
+		if err := manager.SetSessionConfig(t.Context(), session.ID, "fast-mode", value); err != nil {
+			t.Fatal(err)
+		}
+		if job.turnDone() != done || job.Snapshot().State != StateRunning || job.agentSession.ConfigOptions[0].CurrentValue != value {
+			t.Fatal("config change interrupted the turn or lost the provider selection")
+		}
+	}
+	events, err := store.LoadSessionOverviewEvents(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager.finishTurn(done, job)
+	job.agentSession = sessionevents.AgentSession{}
+	manager.applySessionControls(job, config("off"))
+	manager.restoreSessionControls(t.Context(), job, events)
+	option := job.agentSession.ConfigOptions[0]
+	if option.CurrentValue != "on" || option.UserValue == nil || *option.UserValue != "on" {
+		t.Fatalf("restored Fast Mode = %#v", option)
+	}
+}
+
 func TestRestoredChoicesStartOverAtAnAgentSwitch(t *testing.T) {
 	picked := func(category, value string) sessionevents.Event {
 		return sessionevents.Event{Type: sessionevents.TypeAgentSession, AgentSession: &sessionevents.AgentSession{

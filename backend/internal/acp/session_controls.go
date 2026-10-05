@@ -163,16 +163,17 @@ func (m *Manager) SetSessionConfig(ctx context.Context, session, id, value strin
 func (m *Manager) setSessionConfig(ctx context.Context, job *jobState, id, value string) error {
 	job.sendMu.Lock()
 	defer job.sendMu.Unlock()
-	if job.turnDone() != nil {
-		return fmt.Errorf("wait for the active turn before changing agent settings")
-	}
 	job.mu.RLock()
 	optionIndex := slices.IndexFunc(job.agentSession.ConfigOptions, func(option sessionevents.AgentConfigOption) bool { return option.ID == id })
 	valid := optionIndex >= 0 && slices.ContainsFunc(job.agentSession.ConfigOptions[optionIndex].Options, func(option sessionevents.AgentConfigValue) bool { return option.Value == value })
 	modelChange := valid && job.agentSession.ConfigOptions[optionIndex].Category == "model" && job.agentSession.ConfigOptions[optionIndex].CurrentValue != value
+	modelConfig := valid && job.agentSession.ConfigOptions[optionIndex].Category == "model_config"
 	job.mu.RUnlock()
 	if !valid {
 		return fmt.Errorf("agent did not advertise config option %q with value %q", id, value)
+	}
+	if job.turnDone() != nil && !modelConfig {
+		return fmt.Errorf("wait for the active turn before changing agent settings")
 	}
 	if modelChange && agentPolicyForAgent(job.ACPAgent).modelMetaKey != "" {
 		return fmt.Errorf("agent %q drops Jaz's instructions when its model changes mid-session; start a new thread to use %s", CanonicalAgentName(job.ACPAgent), value)
