@@ -6,8 +6,8 @@ import { Button } from '@/components/ui/Button'
 import { IconButton } from '@/components/ui/IconButton'
 import { Popover } from '@/components/ui/Popover'
 import type { ReasoningEffortOption } from '@/lib/api/types'
-import type { ModelSelection } from '@/lib/modelPicker'
-import { modelSuggestionFor, modelSuggestionLabel, type ModelSuggestion } from '@/lib/models'
+import type { ModelPickerOption, ModelSelection } from '@/lib/modelPicker'
+import { modelSuggestionFor, modelSuggestionLabel } from '@/lib/modelSuggestion'
 import { reasoningEffortLabel } from '@/lib/reasoningEfforts'
 
 export function ModelSelect({
@@ -25,7 +25,7 @@ export function ModelSelect({
 }: {
   value: string
   effort: string
-  suggestions: ModelSuggestion[]
+  suggestions: ModelPickerOption[]
   effortOptions: ReasoningEffortOption[]
   loading?: boolean
   disabled?: boolean
@@ -40,10 +40,10 @@ export function ModelSelect({
   const triggerRef = useRef<HTMLButtonElement>(null)
   const reduceMotion = useReducedMotion()
   const selected = modelSuggestionFor(suggestions, value)
-  const effortValue = effort || selected?.reasoning.default_effort || ''
+  const effortValue = effort || selected?.reasoning?.default_effort || ''
   const label = value ? modelSuggestionLabel(suggestions, value) : 'Model'
   const options = effortOptions
-  const effortLabel = selected?.reasoning.automatic && effortOptions.length === 0
+  const effortLabel = selected?.reasoning?.automatic && effortOptions.length === 0
     ? 'Thinking'
     : reasoningEffortLabel(effortValue, options)
   const ultra = effortValue === 'ultra' || effortValue === 'ultracode'
@@ -51,10 +51,10 @@ export function ModelSelect({
     ? Math.min(224, Math.max(1, suggestions.length) * 28)
     : (options.length > 1 ? 64 : 28) + (fastMode ? 16 : 0)
 
-  const selectModel = (model: ModelSuggestion) => {
+  const selectModel = (model: ModelPickerOption) => {
     onChange({
       model: model.value,
-      effort: model.reasoning.efforts?.includes(effortValue) ? effortValue : model.reasoning.default_effort ?? '',
+      effort: model.reasoning && !model.reasoning.efforts?.includes(effortValue) ? model.reasoning.default_effort ?? '' : effortValue,
     })
     setView('slider')
   }

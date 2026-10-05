@@ -32,13 +32,7 @@ export function useNativeSessionControls(sessionId: string, options: AgentSessio
     picker: model ? <ModelSelect
       value={model.current_value}
       effort={effort?.current_value ?? ''}
-      suggestions={model.options.map((value) => ({
-        value: value.value,
-        label: value.name,
-        reasoning: value.value === model.current_value
-          ? { status: 'ready', efforts: effort?.options.map((option) => option.value) }
-          : { status: 'unavailable' },
-      }))}
+      suggestions={model.options.map((value) => ({ value: value.value, label: value.name }))}
       effortOptions={effort?.options.map((value) => ({ value: value.value, label: value.name })) ?? []}
       selectionDisabled={running || update.isPending}
       fastMode={fastMode}
