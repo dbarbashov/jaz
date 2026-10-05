@@ -578,6 +578,7 @@ export function Composer({
   onQueuePrompt,
   commands,
   optionsSlot,
+  leftSlot,
   onStop,
   onClearGoal,
   onVoice,
@@ -609,6 +610,7 @@ export function Composer({
   onQueuePrompt?: SendMessageHandler
   commands?: AgentSessionCommand[]
   optionsSlot?: ReactNode
+  leftSlot?: ReactNode
   onStop: () => void
   onClearGoal?: () => void
   onVoice?: () => void
@@ -659,6 +661,7 @@ export function Composer({
         onQueuePrompt={onQueuePrompt}
         commands={commands}
         optionsSlot={optionsSlot}
+        leftSlot={leftSlot}
         onStop={onStop}
         onClearGoal={onClearGoal}
         onVoice={onVoice}

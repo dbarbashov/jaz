@@ -7,7 +7,7 @@ import type { CreateSessionInput } from '@/lib/api/sessions'
 import { agentSettingsQuery } from '@/lib/api/settings'
 import { composerConfig } from '@/lib/jazDefaults'
 import { useModelReasoningState } from '@/lib/modelReasoning'
-import { parseModelSelections, type ModelSelection } from '@/lib/modelPicker'
+import { parseModelSelections, pickerEffortOptions, type ModelSelection } from '@/lib/modelPicker'
 import { NEW_SESSION_AGENT_KEY, NEW_SESSION_MODELS_KEY } from '@/lib/newSessionConfig'
 
 export function useNewThreadControls() {
@@ -133,7 +133,7 @@ export function AgentModelControls({
           disabled={disabled}
           onChange={controls.setSelection}
           effort={controls.effort}
-          effortOptions={controls.effortOptions}
+          effortOptions={pickerEffortOptions(controls.effortOptions)}
         />
       ) : null}
     </>

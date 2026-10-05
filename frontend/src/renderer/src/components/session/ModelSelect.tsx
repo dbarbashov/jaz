@@ -1,12 +1,13 @@
-import { Check, ChevronDown, ChevronRight, LoaderCircle } from 'lucide-react'
+import { Check, ChevronDown, ChevronRight, LoaderCircle, Zap } from 'lucide-react'
 import { motion, useReducedMotion } from 'motion/react'
 import { useRef, useState } from 'react'
 import { ReasoningEffortSlider } from '@/components/acp/ReasoningEffortSlider'
 import { Button } from '@/components/ui/Button'
+import { IconButton } from '@/components/ui/IconButton'
 import { Popover } from '@/components/ui/Popover'
 import type { ReasoningEffortOption } from '@/lib/api/types'
-import { pickerEffortOptions, type ModelSelection } from '@/lib/modelPicker'
-import { modelSuggestionFor, modelSuggestionLabel, type ModelSuggestion } from '@/lib/models'
+import type { ModelPickerOption, ModelSelection } from '@/lib/modelPicker'
+import { modelSuggestionFor, modelSuggestionLabel } from '@/lib/modelSuggestion'
 import { reasoningEffortLabel } from '@/lib/reasoningEfforts'
 
 export function ModelSelect({
@@ -16,16 +17,20 @@ export function ModelSelect({
   effortOptions,
   loading,
   disabled,
+  selectionDisabled = disabled,
+  fastMode,
   placement,
   align,
   onChange,
 }: {
   value: string
   effort: string
-  suggestions: ModelSuggestion[]
+  suggestions: ModelPickerOption[]
   effortOptions: ReasoningEffortOption[]
   loading?: boolean
   disabled?: boolean
+  selectionDisabled?: boolean
+  fastMode?: { checked: boolean; disabled: boolean; onChange: (checked: boolean) => void }
   placement?: 'above' | 'below'
   align?: 'start' | 'end'
   onChange: (selection: ModelSelection) => void
@@ -35,21 +40,21 @@ export function ModelSelect({
   const triggerRef = useRef<HTMLButtonElement>(null)
   const reduceMotion = useReducedMotion()
   const selected = modelSuggestionFor(suggestions, value)
-  const effortValue = effort || selected?.reasoning.default_effort || ''
+  const effortValue = effort || selected?.reasoning?.default_effort || ''
   const label = value ? modelSuggestionLabel(suggestions, value) : 'Model'
-  const options = pickerEffortOptions(effortOptions)
-  const effortLabel = selected?.reasoning.automatic && effortOptions.length === 0
+  const options = effortOptions
+  const effortLabel = selected?.reasoning?.automatic && effortOptions.length === 0
     ? 'Thinking'
     : reasoningEffortLabel(effortValue, options)
   const ultra = effortValue === 'ultra' || effortValue === 'ultracode'
   const height = view === 'models'
     ? Math.min(224, Math.max(1, suggestions.length) * 28)
-    : options.length > 1 ? 64 : 28
+    : (options.length > 1 ? 64 : 28) + (fastMode ? 16 : 0)
 
-  const selectModel = (model: ModelSuggestion) => {
+  const selectModel = (model: ModelPickerOption) => {
     onChange({
       model: model.value,
-      effort: model.reasoning.efforts?.includes(effortValue) ? effortValue : model.reasoning.default_effort ?? '',
+      effort: model.reasoning && !model.reasoning.efforts?.includes(effortValue) ? model.reasoning.default_effort ?? '' : effortValue,
     })
     setView('slider')
   }
@@ -101,7 +106,22 @@ export function ModelSelect({
         >
           {view === 'slider' ? (
             <div className="px-2 pb-1">
-              <div className="flex justify-center">
+              <div className="flex items-center justify-center gap-1">
+                {fastMode ? (
+                  <IconButton
+                    variant="ghost"
+                    size="sm"
+                    role="switch"
+                    aria-label="Fast Mode"
+                    aria-checked={fastMode.checked}
+                    title={`Fast Mode ${fastMode.checked ? 'On' : 'Off'}`}
+                    disabled={fastMode.disabled}
+                    className={`size-10 ${fastMode.checked ? 'text-primary' : 'text-ink-3'}`}
+                    onClick={() => fastMode.onChange(!fastMode.checked)}
+                  >
+                    <Zap size={15} fill={fastMode.checked ? 'currentColor' : 'none'} />
+                  </IconButton>
+                ) : null}
                 <button
                   autoFocus
                   type="button"
@@ -120,7 +140,7 @@ export function ModelSelect({
                   compact
                   options={options}
                   value={effortValue}
-                  disabled={disabled || loading}
+                  disabled={selectionDisabled || loading}
                   onChange={(effort) => onChange({ model: value, effort })}
                 />
               ) : null}
@@ -148,6 +168,7 @@ export function ModelSelect({
                   aria-checked={model.value === selected?.value}
                   autoFocus={model.value === selected?.value || (!selected && index === 0)}
                   onClick={() => selectModel(model)}
+                  disabled={selectionDisabled}
                   className={`flex h-7 w-full items-center gap-2 rounded-control px-2.5 text-left text-[12px] transition-colors hover:bg-surface-2 focus-visible:bg-surface-2 ${model.value === selected?.value ? 'text-ink' : 'text-ink-2'}`}
                 >
                   <span className="min-w-0 flex-1 truncate">{model.label}</span>

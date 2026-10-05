@@ -18,10 +18,10 @@ export interface ModelSuggestion {
   reasoning: ModelReasoningCapabilities
 }
 
-export function modelSuggestionFor(
-  suggestions: ModelSuggestion[],
+export function modelSuggestionFor<T extends Pick<ModelSuggestion, 'value' | 'aliases'>>(
+  suggestions: T[],
   value: string,
-): ModelSuggestion | undefined {
+): T | undefined {
   const raw = value.trim()
   return raw
     ? suggestions.find((suggestion) => suggestion.value === raw || suggestion.aliases?.includes(raw))
@@ -40,6 +40,6 @@ export function filterModelSuggestions(
   )
 }
 
-export function modelSuggestionLabel(suggestions: ModelSuggestion[], value: string): string {
+export function modelSuggestionLabel(suggestions: Pick<ModelSuggestion, 'value' | 'label' | 'aliases'>[], value: string): string {
   return modelSuggestionFor(suggestions, value)?.label ?? value
 }
