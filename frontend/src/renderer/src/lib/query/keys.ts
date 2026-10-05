@@ -25,6 +25,8 @@ export const keys = {
   sessionEvents: (id: string) => ['sessions', id, 'events'] as const,
   agentFiles: ['agent', 'files'] as const,
   agentSettings: ['settings', 'agents'] as const,
+  // Under agent settings: OpenAI sign-in and API-key changes decide voice availability.
+  voiceSettings: ['settings', 'agents', 'voice'] as const,
   devices: ['settings', 'devices'] as const,
   deviceConnectionLink: ['settings', 'devices', 'connection-link'] as const,
   onboarding: ['onboarding'] as const,

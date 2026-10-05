@@ -8,6 +8,7 @@ import { AgentModelControls, useNewThreadControls } from '@/components/session/u
 import { Checkbox } from '@/components/ui/Checkbox'
 import { useToast } from '@/components/ui/toast'
 import { ApiError } from '@/lib/api/client'
+import { voiceAvailableQuery } from '@/lib/api/liveVoice'
 import { createSession, listFilesystemDirs, projectsQuery } from '@/lib/api/sessions'
 import { agentLabel } from '@/lib/agentLabel'
 import { acpAgentSupportsGoal } from '@/lib/agentRuntimes'
@@ -46,6 +47,7 @@ export const Route = createFileRoute('/new')({
 // first message is on its way.
 function NewSessionPage() {
   const voice = useGlobalVoice()
+  const voiceAvailable = useQuery(voiceAvailableQuery).data
   const navigate = useNavigate()
   const search = Route.useSearch()
   const queryClient = useQueryClient()
@@ -224,7 +226,7 @@ function NewSessionPage() {
         // them.
         fileRoot={directory}
         onSend={handleStart}
-        onVoice={() => void handleStart()}
+        onVoice={voiceAvailable ? () => void handleStart() : undefined}
       />
     </>
   )

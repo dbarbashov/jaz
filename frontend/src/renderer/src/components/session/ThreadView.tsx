@@ -36,6 +36,7 @@ import { Button } from '@/components/ui/Button'
 import { FileDropScope } from '@/components/ui/FileDrop'
 import { useToast } from '@/components/ui/toast'
 import { markThreadSeen } from '@/lib/api/feed'
+import { voiceAvailableQuery } from '@/lib/api/liveVoice'
 import {
   answerSessionInteractiveResponse,
   cancelSession,
@@ -144,6 +145,7 @@ export function ThreadView({
   useComputerControl(sessionId)
   const detail = useSessionHistory(sessionId, reportHistoryError)
   const voice = useVoiceMode(sessionId)
+  const voiceAvailable = useQuery(voiceAvailableQuery).data
   const { start: startVoiceConversation } = voice
   const startVoice = useLocation({ select: (location) => location.state.startVoice })
   const navigate = useNavigate()
@@ -621,7 +623,7 @@ export function ThreadView({
                     onQueuePrompt={queue.onQueuePrompt}
                     onStop={stopSession}
                     onClearGoal={clearGoal}
-                    onVoice={voice.phase === 'off' ? voice.start : undefined}
+                    onVoice={voiceAvailable && voice.phase === 'off' ? voice.start : undefined}
                     voiceActive={voice.phase !== 'off'}
                     onUploadAttachment={(file) => uploadSessionAttachment(session.id, file)}
                     onSteerQueuedPrompt={queue.onSteerQueuedPrompt}
