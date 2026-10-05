@@ -8,4 +8,4 @@
 
 CRM's companion change adds a public conventional ICO endpoint from its existing glyph and corrects record-icon baseline alignment. No new dependency or release/version change.
 
-301 frontend tests, typecheck, lint, web build and full Go build/vet/test pass. Browser-supplied URLs keep priority; failed sources advance through the site icon, Google and globe without retrying the failed URL. The side browser connection became unavailable before a live loading/fallback check, which remains a verification limitation. This frontend change takes effect in the next Jaz app build.
+301 frontend tests, typecheck, lint, web build and full Go build/vet/test pass. Browser-supplied URLs keep priority; failed sources advance through the site's ICO/SVG icons, Google and globe without retrying a failed URL. SVG discovery also bypasses an old HTML response cached at CRM's ICO URL; fresh ICO retrieval matches the deployed asset. The side browser connection became unavailable before a live loading/fallback check, which remains a verification limitation. The active local development renderer serves the change; packaged clients need the next Jaz app build.

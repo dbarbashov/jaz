@@ -23,6 +23,7 @@ export const Favicon = memo(function Favicon({
   const source = [
     iconUrl,
     site && `${site.origin}/favicon.ico`,
+    site && `${site.origin}/favicon.svg`,
     site && `https://www.google.com/s2/favicons?domain=${encodeURIComponent(site.hostname)}&sz=64`,
   ].find((candidate) => candidate && !failedSources.includes(candidate))
   if (!source) {
