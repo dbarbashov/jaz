@@ -326,7 +326,7 @@
   padding: 0;
   font-size: 0.8125rem;
 }
-:where(.chat-prose, .file-prose) a,
+.chat-prose-link,
 .chat-prose-link-button {
   display: inline-flex;
   align-items: baseline;
@@ -347,8 +347,8 @@
   font: inherit;
   cursor: pointer;
 }
-:where(.chat-prose, .file-prose) a:hover,
-:where(.chat-prose, .file-prose) a:focus-visible,
+.chat-prose-link:hover,
+.chat-prose-link:focus-visible,
 .chat-prose-link-button:hover,
 .chat-prose-link-button:focus-visible {
   color: var(--color-primary-strong);

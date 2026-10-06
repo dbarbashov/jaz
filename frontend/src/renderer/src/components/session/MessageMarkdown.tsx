@@ -316,6 +316,7 @@ const PlainMarkdownLink: AnchorComponent = ({ node: _node, children, href, ...pr
   return (
     <a
       {...props}
+      className="chat-prose-link"
       href={href}
       target="_blank"
       rel="noreferrer"

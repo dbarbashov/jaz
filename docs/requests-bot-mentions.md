@@ -28,3 +28,13 @@ The requested review found and fixed three issues:
 - Markdown entities and escaped punctuation rendered as valid mentions but failed group routing. Resolution now uses the existing Markdown writer's text decoding, including escaped entities and numeric references. The entity/escaped-name routing regressions failed before the fix. Goldmark's existing pinned version is marked as a direct dependency; no version was added or upgraded.
 
 Final verification: 306 frontend tests, typecheck, lint, web build, full Go tests and bot race tests pass. Additional coverage protects unresolved user mentions from broadcasting while preserving ordinary user broadcasts. The browser's rendered controls and click navigation still resolve the saved messages to the correct bot ID. Screenshot capture timed out during this review; the earlier visual inspection remains the styling evidence, and this review changed no styles.
+
+## Mention Appearance
+
+- [x] Align the bot icon with the mention label.
+- [x] Keep mentions free of link underlines, including hover and keyboard focus.
+- [x] Verify the rendered result, run checks and review the scoped fix.
+
+The reported alignment and underline share one cause: generic Markdown anchor styles override the pill's centered alignment and add hover/focus underlines. Ordinary Markdown links now opt into their own class, leaving mention styling owned by the existing pill.
+
+Verified in the production ChatLog fixture with saved messages and a fresh dark-mode screenshot: icon/label centers differ by less than 0.01 CSS pixels; mention hover and focus-visible have no underline, while an ordinary link still underlines on hover. All 306 frontend tests, full Go tests, typecheck, lint and web build pass. Strict review confirms the four-line source change removes the broad selector without adding mention-specific overrides or changing routing.
