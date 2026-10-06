@@ -105,7 +105,7 @@ func (s *Server) agentSettingsResponse(defaults agentsettings.AgentDefaults) age
 		Providers:  providers,
 		ACP:        acpDefaultsForAgents(defaults.ACP, agentNames),
 		ACPAuth:    s.acpAgentAuthStatuses(defaults),
-		ACPOptions: s.acpOptions(s.selectableACPAgentCatalog(), agentNames, providers),
+		ACPOptions: s.acpOptions(s.selectableACPAgentCatalog(), agentNames, providers, defaults),
 		Agents:     agentNames,
 	}
 }
@@ -179,11 +179,12 @@ func (s *Server) acpAgentAuthStatuses(defaults agentsettings.AgentDefaults) map[
 	return out
 }
 
-func (s *Server) acpOptions(catalog acp.AgentCatalog, agentNames []string, providers []settingsModelProvider) map[string]agentOptionResponse {
+func (s *Server) acpOptions(catalog acp.AgentCatalog, agentNames []string, providers []settingsModelProvider, defaults agentsettings.AgentDefaults) map[string]agentOptionResponse {
 	options := make(map[string]agentOptionResponse, len(agentNames))
 	for _, name := range agentNames {
 		cfg, _ := catalog.Agent(name)
-		option := acp.AgentOptionsForConfig(name, cfg)
+		cfg.Auth = defaults.ACP[name].Auth
+		option := acp.AgentOptionsForConfig(name, cfg, s.runtimeRoot())
 		option.Models = (acp.ModelCapabilities{Catalog: s.ModelCatalog}).AgentModels(name)
 		if cfg.UsesModelProvider() {
 			modelProviders := compatibleModelProviders(name, cfg.ModelProviderCapability, providers)
