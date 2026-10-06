@@ -20,19 +20,9 @@ const (
 	// other cannot run on.
 	maxFollowUps = 12
 	maxHistory   = 20
-	// relayTimeout bounds how long a relay waits for a turn to take its
-	// messages.
-	relayTimeout = time.Minute
+	// steerTimeout bounds how long handing messages to a running turn waits.
+	steerTimeout = time.Minute
 )
-
-// memberTurns schedules a bot's turns in one group: reading lets one caller at
-// a time show the bot group messages, so none is shown twice; taking and owed,
-// guarded by Service.mu, say whether a turn is in flight and whether another is
-// owed after it.
-type memberTurns struct {
-	reading      sync.Mutex
-	taking, owed bool
-}
 
 // Post adds the user's message to a group.
 func (s *Service) Post(groupID, text string) error {
@@ -50,10 +40,9 @@ func (s *Service) Post(groupID, text string) error {
 	return s.post(record, sessionevents.RoomMessageEvent{Speaker: "user", Name: "You", Text: text})
 }
 
-// post records a message in a group and hands it to the members who should
-// hear it. A member taking a turn in the group hears every post during that
-// turn; otherwise the message wakes the members it addresses, each in a turn
-// of its own, all at once.
+// post records a message in a group and hands it to every other member that
+// should hear it: the members it addresses, and any member taking a turn in
+// the group as it is posted.
 func (s *Service) post(group storage.BotRecord, message sessionevents.RoomMessageEvent) error {
 	text, mentioned := s.resolveMentions(message.Text, group.Members)
 	message.Text = text
@@ -62,32 +51,27 @@ func (s *Service) post(group storage.BotRecord, message sessionevents.RoomMessag
 	}
 	fromMember := slices.Contains(group.Members, message.BotID)
 	wake := addressed(group.Members, mentioned, fromMember)
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	if !fromMember {
+		s.mu.Lock()
 		s.followUps[group.ThreadID] = 0
+		s.mu.Unlock()
 	}
 	for _, member := range group.Members {
-		if member == message.BotID {
-			continue
-		}
-		turns := s.memberTurnsLocked(group.ThreadID, member)
-		if !turns.taking && !slices.Contains(wake, member) {
-			continue
-		}
-		if fromMember {
-			if s.followUps[group.ThreadID] >= maxFollowUps {
-				break
-			}
-			s.followUps[group.ThreadID]++
-		}
-		if turns.taking {
-			go s.relay(group.ThreadID, member, turns)
-		} else {
-			s.wakeLocked(group.ThreadID, member)
+		if member != message.BotID && (slices.Contains(wake, member) || s.inGroupTurn(group.ThreadID, member)) {
+			go s.deliver(group, member, fromMember)
 		}
 	}
 	return nil
+}
+
+// inGroupTurn reports whether member's thread for the group is taking a turn.
+func (s *Service) inGroupTurn(groupID, member string) bool {
+	membership, err := s.store.LoadMembership(groupID, member)
+	if err != nil {
+		return false
+	}
+	thread, err := s.store.LoadSession(membership.ThreadID)
+	return err == nil && thread.Turn != nil
 }
 
 // addressed is who a group message wakes: the members it mentions or, with no
@@ -103,117 +87,49 @@ func addressed(members, mentioned []string, fromMember bool) []string {
 	return members
 }
 
-// ResumeGroups wakes, after a restart, every member with messages addressed to
-// it in a group that it has not been shown.
-func (s *Service) ResumeGroups() error {
-	memberships, err := s.store.ListMemberships()
+// deliver shows member the group messages it has not seen, one delivery at a
+// time per member so none is shown twice.
+func (s *Service) deliver(group storage.BotRecord, member string, fromMember bool) {
+	lock := s.deliveryLock(group.ThreadID, member)
+	lock.Lock()
+	defer lock.Unlock()
+	if err := s.deliverLocked(group, member, fromMember); err != nil {
+		s.log.Warn("group delivery failed", "group", group.ThreadID, "member", member, "error", err)
+	}
+}
+
+// deliverLocked hands the messages to the turn member's thread for the group
+// is taking or, when it takes none or that turn cannot take them, queues a
+// turn for them on that thread, and marks them seen. Deliveries prompted by a
+// member's post spend the group's follow-ups.
+func (s *Service) deliverLocked(group storage.BotRecord, member string, fromMember bool) error {
+	membership, err := s.store.LoadMembership(group.ThreadID, member)
+	if errors.Is(err, storage.ErrMembershipNotFound) {
+		membership, err = s.join(group.ThreadID, member)
+	}
 	if err != nil {
 		return err
 	}
-	for _, membership := range memberships {
-		group, _, err := s.load(membership.GroupID)
-		if err != nil || !slices.Contains(group.Members, membership.BotID) {
-			continue
-		}
-		messages, _, err := s.unseen(membership.GroupID, membership.BotID, membership.Seen)
-		if err != nil {
-			return err
-		}
-		if !slices.ContainsFunc(messages, func(message sessionevents.RoomMessageEvent) bool {
-			_, mentioned := s.resolveMentions(message.Text, group.Members)
-			return slices.Contains(addressed(group.Members, mentioned, slices.Contains(group.Members, message.BotID)), membership.BotID)
-		}) {
-			continue
-		}
-		s.mu.Lock()
-		s.wakeLocked(membership.GroupID, membership.BotID)
-		s.mu.Unlock()
-	}
-	return nil
-}
-
-// memberTurnsLocked returns how member's turns in the group are scheduled.
-// Callers hold s.mu.
-func (s *Service) memberTurnsLocked(groupID, member string) *memberTurns {
-	key := groupID + "\x00" + member
-	turns := s.members[key]
-	if turns == nil {
-		turns = &memberTurns{}
-		s.members[key] = turns
-	}
-	return turns
-}
-
-// wakeLocked gives member a turn in the group soon. A member has at most one
-// turn in flight per group: a wake while it is busy there folds into one more
-// turn, which answers whatever that member has not seen by then, so a burst of
-// posts costs one turn. Callers hold s.mu.
-func (s *Service) wakeLocked(groupID, member string) {
-	turns := s.memberTurnsLocked(groupID, member)
-	if turns.taking {
-		turns.owed = true
-		return
-	}
-	turns.taking = true
-	go s.takeTurns(groupID, member, turns)
-}
-
-// takeTurns runs member's turns in the group until no wake is owed.
-func (s *Service) takeTurns(groupID, member string, turns *memberTurns) {
-	for {
-		s.mu.Lock()
-		turns.owed = false
-		s.mu.Unlock()
-		if err := s.memberTurn(groupID, member, turns); err != nil {
-			s.log.Warn("group turn failed", "group", groupID, "member", member, "error", err)
-		}
-		s.mu.Lock()
-		owed := turns.owed
-		turns.taking = owed
-		s.mu.Unlock()
-		if !owed {
-			return
-		}
-	}
-}
-
-// memberTurn gives member a turn in its thread for the group, to answer the
-// messages it has not seen there, posting with send_message. With none left,
-// it takes no turn.
-func (s *Service) memberTurn(groupID, member string, turns *memberTurns) error {
-	thread, job, err := s.beginMemberTurn(groupID, member, turns)
-	if err != nil || thread == "" {
-		return err
-	}
-	done, err := s.finish(context.Background(), thread, job.ID)
-	if err != nil {
-		return err
-	}
-	if done.State == acp.StateFailed {
-		return fmt.Errorf("%s failed: %s", thread, done.Error)
-	}
-	return nil
-}
-
-// beginMemberTurn starts member's turn in its thread for the group with the
-// messages it has not seen, and marks them seen once the turn has started. It
-// reads for the member until then, so posts that arrive while the turn waits
-// to start reach it as soon as it runs. It returns no thread when there is
-// nothing to answer.
-func (s *Service) beginMemberTurn(groupID, member string, turns *memberTurns) (string, acp.Job, error) {
-	group, _, err := s.load(groupID)
-	if err != nil {
-		return "", acp.Job{}, err
-	}
-	turns.reading.Lock()
-	defer turns.reading.Unlock()
-	membership, err := s.membership(groupID, member)
-	if err != nil {
-		return "", acp.Job{}, err
-	}
-	messages, seen, err := s.unseen(groupID, member, membership.Seen)
+	messages, seen, err := s.unseen(group.ThreadID, member, membership.Seen)
 	if err != nil || len(messages) == 0 {
-		return "", acp.Job{}, err
+		return err
+	}
+	thread, err := s.store.LoadSession(membership.ThreadID)
+	if err != nil {
+		return err
+	}
+	if fromMember && !s.spendFollowUp(group.ThreadID) {
+		return nil
+	}
+	if thread.Turn != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), steerTimeout)
+		_, err := s.threads.SteerInternal(ctx, membership.ThreadID, groupUpdatePrompt(messages))
+		cancel()
+		if err == nil {
+			membership.Seen = seen
+			return s.store.SaveMembership(membership)
+		}
+		s.log.Debug("group turn could not take messages; queueing a turn", "group", group.ThreadID, "member", member, "error", err)
 	}
 	peers := make([]string, 0, len(group.Members))
 	for _, other := range group.Members {
@@ -221,24 +137,41 @@ func (s *Service) beginMemberTurn(groupID, member string, turns *memberTurns) (s
 			peers = append(peers, fmt.Sprintf("[@%s](bot:%s)", s.name(other), other))
 		}
 	}
-	job, err := s.threads.StartInternalTurnWhenIdle(context.Background(), acp.InternalTurnRequest{
-		Session: membership.ThreadID, Message: groupTurnPrompt(peers, messages), AllowSilence: true,
-	})
-	if err != nil {
-		return "", acp.Job{}, err
+	if err := s.queue.QueueInternalTurn(context.Background(), membership.ThreadID, storage.NewInternalQueuedMessage(groupTurnPrompt(peers, messages))); err != nil {
+		return err
 	}
 	membership.Seen = seen
-	return membership.ThreadID, job, s.store.SaveMembership(membership)
+	return s.store.SaveMembership(membership)
 }
 
-// membership returns member's place in the group, creating the thread it takes
-// the group's turns in before its first turn there: a hidden thread on the
-// bot's agent, model and home.
-func (s *Service) membership(groupID, member string) (storage.BotMembership, error) {
-	membership, err := s.store.LoadMembership(groupID, member)
-	if !errors.Is(err, storage.ErrMembershipNotFound) {
-		return membership, err
+// deliveryLock serialises deliveries to member in the group.
+func (s *Service) deliveryLock(groupID, member string) *sync.Mutex {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	key := groupID + "\x00" + member
+	lock := s.delivering[key]
+	if lock == nil {
+		lock = &sync.Mutex{}
+		s.delivering[key] = lock
 	}
+	return lock
+}
+
+// spendFollowUp takes one of the group's follow-ups, reporting false once
+// they are spent.
+func (s *Service) spendFollowUp(groupID string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.followUps[groupID] >= maxFollowUps {
+		return false
+	}
+	s.followUps[groupID]++
+	return true
+}
+
+// join creates the thread member takes the group's turns in: a hidden thread
+// on the bot's agent, model and home.
+func (s *Service) join(groupID, member string) (storage.BotMembership, error) {
 	bot, err := s.store.LoadSession(member)
 	if err != nil {
 		return storage.BotMembership{}, err
@@ -263,52 +196,8 @@ func (s *Service) membership(groupID, member string) (storage.BotMembership, err
 	if err != nil {
 		return storage.BotMembership{}, err
 	}
-	membership = storage.BotMembership{GroupID: groupID, BotID: member, ThreadID: thread.ID}
+	membership := storage.BotMembership{GroupID: groupID, BotID: member, ThreadID: thread.ID}
 	return membership, s.store.SaveMembership(membership)
-}
-
-// relay hands member the group messages it has not seen while it works on its
-// turn there, so it can work them in before the turn ends. A turn that has
-// ended or cannot take them owes the member another turn instead.
-func (s *Service) relay(groupID, member string, turns *memberTurns) {
-	turns.reading.Lock()
-	defer turns.reading.Unlock()
-	err := s.steerUnseen(groupID, member)
-	if err == nil {
-		return
-	}
-	s.log.Debug("group relay fell back to a turn", "group", groupID, "member", member, "error", err)
-	s.mu.Lock()
-	s.wakeLocked(groupID, member)
-	s.mu.Unlock()
-}
-
-// steerUnseen hands the messages member has not seen, if any, to its running
-// turn in the group and marks them seen once the turn has them. Callers hold
-// the member's reading.
-func (s *Service) steerUnseen(groupID, member string) error {
-	membership, err := s.store.LoadMembership(groupID, member)
-	if err != nil {
-		return err
-	}
-	messages, seen, err := s.unseen(groupID, member, membership.Seen)
-	if err != nil || len(messages) == 0 {
-		return err
-	}
-	thread, err := s.store.LoadSession(membership.ThreadID)
-	if err != nil {
-		return err
-	}
-	if thread.Turn == nil {
-		return errors.New("its turn in the group has ended")
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), relayTimeout)
-	defer cancel()
-	if _, err := s.threads.SteerInternal(ctx, membership.ThreadID, groupUpdatePrompt(messages)); err != nil {
-		return err
-	}
-	membership.Seen = seen
-	return s.store.SaveMembership(membership)
 }
 
 // unseen returns the group messages after seq after that member did not post,

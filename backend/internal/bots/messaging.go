@@ -70,17 +70,19 @@ func (s *Service) Say(threadID, text string) error {
 	if session.Turn != nil && session.Turn.Output != nil && session.Turn.Output.ReplyTo != "" {
 		return s.store.AppendTurnReply(threadID, text)
 	}
-	bot, name := s.author(threadID)
-	if !s.isBot(bot) {
+	membership, err := s.store.LoadMembershipByThread(threadID)
+	inGroup := err == nil
+	bot := threadID
+	if inGroup {
+		bot = membership.BotID
+	}
+	record, botSession, err := s.load(bot)
+	if err != nil || record.Kind != KindBot {
 		return errors.New("only a Jaz bot can send messages")
 	}
-	message := sessionevents.RoomMessageEvent{Speaker: "bot", BotID: bot, Name: name, Text: text}
-	if bot == threadID {
+	message := sessionevents.RoomMessageEvent{Speaker: "bot", BotID: bot, Name: botSession.Title, Text: text}
+	if !inGroup {
 		return s.appendEvent(sessionevents.Event{SessionID: threadID, Type: sessionevents.TypeRoomMessage, RoomMessage: &message, At: time.Now().UTC()})
-	}
-	membership, err := s.store.LoadMembershipByThread(threadID)
-	if err != nil {
-		return err
 	}
 	group, _, err := s.load(membership.GroupID)
 	if err != nil {

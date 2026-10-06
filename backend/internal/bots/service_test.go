@@ -32,15 +32,11 @@ type fakeWorld struct {
 	held      map[string]chan struct{}
 	// memberships holds each bot's place in each group.
 	memberships []storage.BotMembership
-	// busy holds a thread's next turn back, as another turn running there
-	// would; waiting counts the turns held back so.
-	busy    map[string]chan struct{}
-	waiting map[string]int
-	steered map[string][]string
+	steered     map[string][]string
 	// steerless makes every thread's agent unable to take messages mid-turn.
 	steerless bool
-	// unstartable makes a thread's next turn fail to start.
-	unstartable map[string]bool
+	// unqueueable makes queueing a thread's next turn fail.
+	unqueueable map[string]bool
 	service     *Service
 }
 
@@ -53,11 +49,9 @@ func newFakeWorld() *fakeWorld {
 		replies:  map[string][]string{},
 		models:   map[string]string{},
 		held:     map[string]chan struct{}{},
-		busy:     map[string]chan struct{}{},
-		waiting:  map[string]int{},
 		steered:  map[string][]string{},
 
-		unstartable: map[string]bool{},
+		unqueueable: map[string]bool{},
 	}
 }
 
@@ -244,13 +238,41 @@ type fakeThreads struct {
 	world *fakeWorld
 }
 
+// QueueInternalTurn queues a hidden turn on a thread and, like the server,
+// runs the thread's queued turns one at a time while it is free.
 func (t fakeThreads) QueueInternalTurn(_ context.Context, id string, message storage.QueuedMessage) error {
 	t.world.mu.Lock()
-	defer t.world.mu.Unlock()
+	if t.world.unqueueable[id] {
+		delete(t.world.unqueueable, id)
+		t.world.mu.Unlock()
+		return errors.New("queue unavailable")
+	}
 	session := t.world.sessions[id]
 	session.QueuedMessages = append(session.QueuedMessages, message.AsInternal())
 	t.world.sessions[id] = session
+	t.world.mu.Unlock()
+	go t.drain(id)
 	return nil
+}
+
+func (t fakeThreads) drain(id string) {
+	for {
+		t.world.mu.Lock()
+		session := t.world.sessions[id]
+		if session.Turn != nil || len(session.QueuedMessages) == 0 {
+			t.world.mu.Unlock()
+			return
+		}
+		message := session.QueuedMessages[0]
+		session.QueuedMessages = session.QueuedMessages[1:]
+		session.Turn = &storage.Turn{Output: message.Output}
+		t.world.sessions[id] = session
+		t.world.prompts[id] = append(t.world.prompts[id], message.Text)
+		t.world.mu.Unlock()
+		if _, err := t.Wait(context.Background(), acp.WaitRequest{Session: id}); err != nil {
+			return
+		}
+	}
 }
 
 func (w *fakeWorld) AppendTurnReply(id, message string) error {
@@ -277,20 +299,7 @@ func (t fakeThreads) CreateSession(_ context.Context, req acp.SpawnRequest) (sto
 
 func (t fakeThreads) StartInternalTurnWhenIdle(_ context.Context, req acp.InternalTurnRequest) (acp.Job, error) {
 	t.world.mu.Lock()
-	busy := t.world.busy[req.Session]
-	if busy != nil {
-		t.world.waiting[req.Session]++
-	}
-	t.world.mu.Unlock()
-	if busy != nil {
-		<-busy
-	}
-	t.world.mu.Lock()
 	defer t.world.mu.Unlock()
-	if t.world.unstartable[req.Session] {
-		delete(t.world.unstartable, req.Session)
-		return acp.Job{}, errors.New("agent process failed to start")
-	}
 	t.world.prompts[req.Session] = append(t.world.prompts[req.Session], req.Message)
 	session := t.world.sessions[req.Session]
 	session.Turn = &storage.Turn{Output: req.Output}
@@ -392,10 +401,10 @@ func newGroup(t *testing.T, service *Service) (Bot, string, string) {
 }
 
 // memberThread is the thread bot takes its turns in for group, created as it
-// would be before the bot's first turn there.
+// would be before the bot's first delivery there.
 func memberThread(t *testing.T, service *Service, groupID, bot string) string {
 	t.Helper()
-	membership, err := service.membership(groupID, bot)
+	membership, err := service.join(groupID, bot)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -408,17 +417,30 @@ func (w *fakeWorld) running(id string) bool {
 	return w.sessions[id].Turn != nil
 }
 
-// turnsInFlight counts the group turns members have in flight.
-func turnsInFlight(s *Service) int {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	count := 0
-	for _, place := range s.members {
-		if place.taking {
-			count++
+// settle waits until no thread is taking or has queued a turn and stays so
+// briefly, long enough for deliveries on their way to land.
+func (w *fakeWorld) settle(t *testing.T) {
+	t.Helper()
+	waitUntil(t, func() bool {
+		for range 3 {
+			if w.busy() {
+				return false
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		return true
+	})
+}
+
+func (w *fakeWorld) busy() bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	for _, session := range w.sessions {
+		if session.Turn != nil || len(session.QueuedMessages) > 0 {
+			return true
 		}
 	}
-	return count
+	return false
 }
 
 func waitUntil(t *testing.T, check func() bool) {
@@ -485,7 +507,9 @@ func TestMembersFollowUpOnlyWhenMentioned(t *testing.T) {
 	// Research answers after Marketing's turn has ended, as a real agent's
 	// slower turn would, so the answer reaches Marketing only if it is
 	// addressed.
-	waitUntil(t, func() bool { return world.promptCount(research) == 1 && turnsInFlight(service) == 1 })
+	waitUntil(t, func() bool {
+		return world.running(research) && world.promptCount(marketing) == 1 && !world.running(marketing)
+	})
 	close(release)
 	waitUntil(t, func() bool { return slices.Contains(world.roomMessages(group.ID), "Research: Checked.") })
 	time.Sleep(20 * time.Millisecond)
@@ -544,9 +568,7 @@ func TestPostsDuringAMembersTurnReachItBeforeTheTurnEnds(t *testing.T) {
 	}
 	close(release)
 	close(world.held[research])
-	waitUntil(t, func() bool {
-		return turnsInFlight(service) == 0
-	})
+	world.settle(t)
 	if world.promptCount(marketing) != 1 {
 		world.mu.Lock()
 		defer world.mu.Unlock()
@@ -554,7 +576,7 @@ func TestPostsDuringAMembersTurnReachItBeforeTheTurnEnds(t *testing.T) {
 	}
 }
 
-func TestPostsAnAgentCannotTakeMidTurnFoldIntoOneMoreTurn(t *testing.T) {
+func TestPostsAnAgentCannotTakeMidTurnReachItInTurnsAfterIt(t *testing.T) {
 	world := newFakeWorld()
 	world.addBot("a", "Research")
 	world.addBot("b", "Marketing")
@@ -566,68 +588,39 @@ func TestPostsAnAgentCannotTakeMidTurnFoldIntoOneMoreTurn(t *testing.T) {
 	progressDuringTurn(t, world, service, group, research, marketing, release)
 
 	close(release)
-	waitUntil(t, func() bool { return world.promptCount(marketing) == 2 })
+	later := func() string {
+		world.mu.Lock()
+		defer world.mu.Unlock()
+		if len(world.prompts[marketing]) < 2 {
+			return ""
+		}
+		return strings.Join(world.prompts[marketing][1:], "\n")
+	}
+	waitUntil(t, func() bool {
+		return strings.Contains(later(), "second finding") && strings.Contains(later(), "third finding")
+	})
 	close(world.held[research])
-	world.mu.Lock()
-	defer world.mu.Unlock()
-	if next := world.prompts[marketing][1]; !strings.Contains(next, "second finding") || !strings.Contains(next, "third finding") || strings.Contains(next, "first finding") {
-		t.Fatalf("Marketing's next turn:\n%s", next)
+	if strings.Contains(later(), "first finding") {
+		t.Fatalf("Marketing's later turns repeat what it had seen:\n%s", later())
 	}
 }
 
-func TestPostsBeforeAMembersTurnStartsReachItAsItStarts(t *testing.T) {
+func TestMessagesAQueueRefusedReachTheNextTurn(t *testing.T) {
 	world := newFakeWorld()
 	world.addBot("a", "Research")
 	world.addBot("b", "Marketing")
 	service := newTestService(world)
 	group, _, marketing := newGroup(t, service)
-	idle := make(chan struct{})
-	world.busy[marketing] = idle
-	release := make(chan struct{})
-	world.held[marketing] = release
-
-	if err := service.Message("a", group.ID, "[@Marketing](bot:b) draft the launch post"); err != nil {
-		t.Fatal(err)
-	}
-	waitUntil(t, func() bool {
-		world.mu.Lock()
-		defer world.mu.Unlock()
-		return world.waiting[marketing] == 1
-	})
-	if err := service.Message("a", group.ID, "[@Marketing](bot:b) keep it under 100 words"); err != nil {
-		t.Fatal(err)
-	}
-	// Give a relay that does not wait for the turn to start time to run first.
-	time.Sleep(50 * time.Millisecond)
-	close(idle)
-	waitUntil(t, func() bool {
-		world.mu.Lock()
-		defer world.mu.Unlock()
-		return len(world.steered[marketing]) == 1
-	})
-	close(release)
-	waitUntil(t, func() bool {
-		return turnsInFlight(service) == 0
-	})
-	world.mu.Lock()
-	defer world.mu.Unlock()
-	if len(world.prompts[marketing]) != 1 || !strings.Contains(world.prompts[marketing][0], "draft the launch post") || !strings.Contains(world.steered[marketing][0], "keep it under 100 words") {
-		t.Fatalf("turns %q, handed mid-turn %q", world.prompts[marketing], world.steered[marketing])
-	}
-}
-
-func TestMessagesOfATurnThatFailedToStartReachTheNextTurn(t *testing.T) {
-	world := newFakeWorld()
-	world.addBot("a", "Research")
-	world.addBot("b", "Marketing")
-	service := newTestService(world)
-	group, _, marketing := newGroup(t, service)
-	world.unstartable[marketing] = true
+	world.unqueueable[marketing] = true
 
 	if err := service.Post(group.ID, "[@Marketing](bot:b) draft the launch post"); err != nil {
 		t.Fatal(err)
 	}
-	waitUntil(t, func() bool { return turnsInFlight(service) == 0 })
+	waitUntil(t, func() bool {
+		world.mu.Lock()
+		defer world.mu.Unlock()
+		return !world.unqueueable[marketing]
+	})
 	if err := service.Post(group.ID, "[@Marketing](bot:b) and keep it short"); err != nil {
 		t.Fatal(err)
 	}
@@ -778,9 +771,8 @@ func TestGroupTurnsRunInTheBotsGroupThreadAndPostAsTheBot(t *testing.T) {
 	if err := service.Post(group.ID, "[@Research](bot:a) dig into pricing"); err != nil {
 		t.Fatal(err)
 	}
-	waitUntil(t, func() bool {
-		return slices.Contains(world.roomMessages(group.ID), "Research: On it.") && turnsInFlight(service) == 0
-	})
+	waitUntil(t, func() bool { return slices.Contains(world.roomMessages(group.ID), "Research: On it.") })
+	world.settle(t)
 	membership, err := world.LoadMembership(group.ID, "a")
 	if err != nil || membership.ThreadID != "thread-Research in Launch" || membership.Seen == 0 {
 		t.Fatalf("membership = %+v, %v", membership, err)
@@ -803,63 +795,6 @@ func TestGroupTurnsRunInTheBotsGroupThreadAndPostAsTheBot(t *testing.T) {
 	created := world.created[len(world.created)-1]
 	if created.SourceType != storage.SourceBotMember || created.SourceID != "a" || created.ACPAgent != acp.AgentClaude || created.Directory != "/bots/a" || created.Model != "opus" || created.ReasoningEffort != "high" {
 		t.Fatalf("group thread created as %+v", created)
-	}
-}
-
-func TestAGroupTurnDoesNotWaitForTheBotsOwnChat(t *testing.T) {
-	world := newFakeWorld()
-	world.addBot("a", "Research")
-	world.addBot("b", "Marketing")
-	service := newTestService(world)
-	group, research, _ := newGroup(t, service)
-	busy := make(chan struct{})
-	defer close(busy)
-	world.busy["a"] = busy
-	world.replies[research] = []string{"On it."}
-
-	if err := service.Post(group.ID, "[@Research](bot:a) dig into pricing"); err != nil {
-		t.Fatal(err)
-	}
-	waitUntil(t, func() bool { return slices.Contains(world.roomMessages(group.ID), "Research: On it.") })
-}
-
-func TestResumeGroupsWakesMembersWithMessagesAddressedToThem(t *testing.T) {
-	world := newFakeWorld()
-	world.addBot("a", "Research")
-	world.addBot("b", "Marketing")
-	service := newTestService(world)
-	group, research, marketing := newGroup(t, service)
-	for i, message := range []sessionevents.RoomMessageEvent{
-		{Speaker: "user", Name: "You", Text: "Morning."},
-		{Speaker: "bot", BotID: "a", Name: "Research", Text: "[@Marketing](bot:b) your draft?"},
-		{Speaker: "bot", BotID: "b", Name: "Marketing", Text: "Thinking out loud."},
-	} {
-		if err := world.AppendSessionEvents(group.ID, sessionevents.Event{SessionID: group.ID, Type: sessionevents.TypeRoomMessage, RoomMessage: &message}); err != nil {
-			t.Fatal(err)
-		}
-		if i > 0 {
-			continue
-		}
-		// Both had been shown the first message when Jaz stopped.
-		for _, bot := range []string{"a", "b"} {
-			membership, err := world.LoadMembership(group.ID, bot)
-			if err != nil {
-				t.Fatal(err)
-			}
-			membership.Seen = 1
-			if err := world.SaveMembership(membership); err != nil {
-				t.Fatal(err)
-			}
-		}
-	}
-
-	restarted := newTestService(world)
-	if err := restarted.ResumeGroups(); err != nil {
-		t.Fatal(err)
-	}
-	waitUntil(t, func() bool { return world.promptCount(marketing) == 1 && turnsInFlight(restarted) == 0 })
-	if world.promptCount(research) != 0 {
-		t.Fatalf("Research was woken by an unaddressed post: %q", world.prompts[research])
 	}
 }
 
