@@ -44,7 +44,12 @@ export function ChatLog({
           <div key={entry.key} className={opensRun ? 'mt-4 first:mt-0' : 'mt-1'}>
             {stamped ? <p className="pb-3 text-center text-[12px] text-ink-3">{messageTime(entry.at)}</p> : null}
             {entry.kind === 'user' ? (
-              <UserBubble text={entry.text} createdAt={entry.at} />
+              <UserBubble
+                text={entry.text}
+                createdAt={entry.at}
+                attachments={entry.attachments}
+                attachmentSessionId={entry.attachmentSessionId}
+              />
             ) : entry.kind === 'activity' ? (
               <SystemEventRow event={entry.event} onOpen={entry.event.loop_created ? onOpenRoutines : undefined} />
             ) : entry.kind === 'app' ? (

@@ -1,4 +1,4 @@
-import type { ACPPermission, Bot, BotActivityEvent, BotAvatar, BotColor, BotShape, ChatMessage, MCPAppEvent, MCPEntrypoint, SessionEvent } from '@/lib/api/types'
+import type { ACPPermission, Attachment, Bot, BotActivityEvent, BotAvatar, BotColor, BotShape, ChatMessage, MCPAppEvent, MCPEntrypoint, SessionEvent } from '@/lib/api/types'
 import { messageText } from '@/lib/messageText'
 import { isPresentedApp } from '@/lib/mcpApps'
 import { hasPermissionSurface } from '@/lib/sessionPermissions'
@@ -95,7 +95,7 @@ export function botAvatars(bot: Bot, bots: Bot[]): BotAvatar[] {
 }
 
 export type ChatEntry =
-  | { kind: 'user'; key: string; at: string; text: string }
+  | { kind: 'user'; key: string; at: string; text: string; attachments?: Attachment[]; attachmentSessionId?: string }
   | { kind: 'bot'; key: string; at: string; botId?: string; name: string; text: string }
   | { kind: 'activity'; key: string; at: string; event: SessionEvent }
   | { kind: 'app'; key: string; at: string; app: MCPAppEvent }
@@ -142,7 +142,11 @@ export function botChat(
   for (const { at, message, event } of items) {
     if (message) {
       close()
-      entries.push({ kind: 'user', key: `message:${message.seq}:${at}`, at, text: messageText(message) })
+      entries.push({
+        kind: 'user', key: `message:${message.seq}:${at}`, at, text: messageText(message),
+        attachments: message.blocks?.filter((block) => block.type === 'attachment'),
+        attachmentSessionId: self.id,
+      })
       turn = { at, user: true, spoke: false }
       continue
     }
