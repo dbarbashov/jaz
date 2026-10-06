@@ -56,7 +56,7 @@ export function ChatLog({
                 {named ? (
                   <span className="w-7 shrink-0">{closesRun ? <BotAvatar avatar={avatar(entry.botId)} size={28} /> : null}</span>
                 ) : null}
-                <div className="flex min-w-0 flex-1 flex-col items-start gap-1">
+                <div className="flex min-w-0 flex-1 flex-col gap-1">
                   {named && opensRun ? (
                     <span
                       className="px-1 text-[12px] font-medium"
@@ -94,10 +94,10 @@ export function ChatLog({
 // narrow log drops them so they never squeeze the message.
 function ChatBubble({ text, at, mine = false }: { text: string; at: string; mine?: boolean }) {
   return (
-    <div className={`group/message flex w-full items-center gap-3 ${mine ? 'flex-row-reverse' : ''}`}>
+    <div className={`group/message flex items-center gap-3 ${mine ? 'flex-row-reverse' : ''}`}>
       <div
         className={`min-w-0 max-w-[84%] rounded-[20px] px-4 py-2.5 text-sm [overflow-wrap:break-word] select-text ${
-          mine ? 'bg-primary-soft dark:bg-[color-mix(in_oklab,var(--color-primary)_40%,var(--color-surface))]' : 'bg-surface'
+          mine ? 'bg-bubble-sent' : 'bg-surface'
         }`}
       >
         <UserMessageMarkdown text={text} />
