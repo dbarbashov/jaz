@@ -43,6 +43,7 @@ type ACPManager interface {
 	CreateSession(context.Context, acp.SpawnRequest) (storage.Session, error)
 	Spawn(context.Context, acp.SpawnRequest) (acp.SpawnResult, error)
 	Send(context.Context, acp.SendRequest) (acp.Job, error)
+	ResumeInterruptedTurn(context.Context, string) error
 	StartInternalTurn(context.Context, acp.InternalTurnRequest) (acp.Job, error)
 	StartInternalTurnWhenIdle(context.Context, acp.InternalTurnRequest) (acp.Job, error)
 	ContinueGoal(context.Context, string) (acp.Job, error)
@@ -582,11 +583,11 @@ func titleFromMessage(message string) string {
 	return title
 }
 
-func (s *Server) lockSession(id string) func() {
+func (s *Server) lockSession(ids ...string) func() {
 	if s.Locks == nil {
 		return func() {}
 	}
-	return s.Locks.Lock(id)
+	return s.Locks.Lock(ids...)
 }
 
 func writeSSE(w http.ResponseWriter, flusher http.Flusher, event agent.StreamEvent) {

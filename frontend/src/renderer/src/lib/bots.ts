@@ -104,26 +104,18 @@ export type ChatEntry =
 type ChatTurn = {
   at: string
   user: boolean
-  spoke: boolean
   activity?: BotActivityEvent
-  reply?: { key: string; at: string; text: string }
 }
 
-export type BotWork = { doing?: string; note?: string }
+export type BotWork = { doing?: string }
 
 // A bot's chat, read from its thread in one pass: what people typed, what bots
 // sent with send_message, presented apps, questions with their answers, and
 // activity rows. Lookups and work for other bots stay private.
-// A finished user turn without public output shows its
-// last written reply, so an answer is never lost. `doing`
-// names what the bot is busy with when a group, another bot or a routine
-// opened its latest turn, whose output lands elsewhere; `note` is the last line
-// the bot wrote in it.
 export function botChat(
   messages: ChatMessage[],
   events: SessionEvent[],
   self: { id: string; name: string },
-  working: boolean,
   entrypoints: MCPEntrypoint[],
 ): { entries: ChatEntry[]; work: BotWork; waiting: boolean } {
   const items = [
@@ -136,18 +128,14 @@ export function botChat(
   const questions = new Map<string, Extract<ChatEntry, { kind: 'question' }>>()
   const answers = new Map<string, ACPPermission>()
   let turn: ChatTurn | undefined
-  const close = () => {
-    if (turn?.user && !turn.spoke && turn.reply) entries.push({ kind: 'bot', name: self.name, botId: self.id, ...turn.reply })
-  }
   for (const { at, message, event } of items) {
     if (message) {
-      close()
       entries.push({
         kind: 'user', key: `message:${message.seq}:${at}`, at, text: messageText(message),
         attachments: message.blocks?.filter((block) => block.type === 'attachment'),
         attachmentSessionId: self.id,
       })
-      turn = { at, user: true, spoke: false }
+      turn = { at, user: true }
       continue
     }
     const key = `${event.session_id}:${event.seq ?? at}`
@@ -156,16 +144,13 @@ export function botChat(
     if (room) {
       if (room.speaker === 'user') entries.push({ kind: 'user', key, at, text: room.text })
       else entries.push({ kind: 'bot', key, at, botId: room.bot_id, name: room.name, text: room.text })
-      if (turn && room.speaker === 'bot') turn.spoke = true
     } else if (activity) {
       // Messaging another bot happens within a turn; anything else starts one.
       const opens = activity.kind !== 'message_sent'
-      if (opens) close()
       if (activity.kind === 'message_sent' || activity.kind === 'message_received') entries.push({ kind: 'activity', key, at, event })
-      if (opens) turn = { at, user: false, spoke: false, activity }
+      if (opens) turn = { at, user: false, activity }
     } else if (event.type === 'mcp_app' && event.mcp_app && (event.mcp_app.presented || turn?.user || turn?.activity?.kind === 'routine') && isPresentedApp(event.mcp_app, entrypoints)) {
       entries.push({ kind: 'app', key, at, app: event.mcp_app })
-      if (turn) turn.spoke = true
     } else if (event.type === 'permission_request' && event.permission && hasPermissionSurface(event.permission)) {
       // A question asked again replaces its card; the latest one is answered.
       const asked = questions.get(event.permission.id)
@@ -176,20 +161,16 @@ export function botChat(
         questions.set(event.permission.id, entry)
         entries.push(entry)
       }
-      if (turn) turn.spoke = true
     } else if (event.type === 'permission_response' && event.permission) {
       answers.set(event.permission.id, event.permission)
     } else if (event.loop_created || event.type === 'agent_switch') {
       entries.push({ kind: 'activity', key, at, event })
-    } else if (turn && (event.type === 'acp_message' || event.type === 'acp') && event.acp?.id === self.id && event.content?.trim()) {
-      turn.reply = { key, at, text: event.content.trim() }
     }
   }
-  if (!working) close()
   for (const [id, entry] of questions) entry.answer = answers.get(id)
   // A bot held on the user's answer to its question is waiting, not working.
   const waiting = [...questions.values()].some((entry) => !entry.answer)
-  return { entries, work: { doing: busyWith(turn?.activity), note: turn?.reply?.text.split('\n').at(-1) }, waiting }
+  return { entries, work: { doing: busyWith(turn?.activity) }, waiting }
 }
 
 // What a bot's running subtasks have it doing, said as one person doing

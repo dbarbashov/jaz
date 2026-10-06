@@ -16,7 +16,7 @@ type Runtime interface {
 }
 
 func Resume(ctx context.Context, store storage.SessionStore, runtime Runtime, locks *sessionlock.Locks, events *sessionevents.Bus, logger *log.Logger) error {
-	sessions, err := store.ListSessions(storage.SessionFilter{Runtime: storage.RuntimeACP, RootOnly: true, Limit: 10})
+	sessions, err := store.ListSessions(storage.SessionFilter{Runtime: storage.RuntimeACP, IncludeChildren: true, IncludeSourced: true})
 	if err != nil {
 		return err
 	}
@@ -24,7 +24,7 @@ func Resume(ctx context.Context, store storage.SessionStore, runtime Runtime, lo
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		if candidate.Status != storage.StatusInterrupted {
+		if candidate.Status != storage.StatusInterrupted || (candidate.SourceType != "" && candidate.SourceType != storage.SourceBot && candidate.SourceType != storage.SourceBotWorker) {
 			continue
 		}
 		unlock := locks.Lock(candidate.ID)

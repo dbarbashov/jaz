@@ -150,10 +150,8 @@ func serveOptions(args []string) []fx.Option {
 			app.StartSkillSync,
 			app.StartGmailSync,
 			app.StartModelCatalogWarmup,
-			startServer,
 			app.DeclareMCPServers,
-			app.StartMCPManager,
-			app.StartSessionRecovery,
+			startServer,
 		),
 	}
 }
@@ -294,7 +292,7 @@ func startServer(
 		Terminal:              terminals,
 		Devices:               deviceAuth,
 	}
-	app.ConnectACPCompletion(manager, handler, a, store, locks, events, prompts, logger)
+	app.ConnectACPCompletion(manager, a, store, locks, events, prompts, logger)
 	lc.Append(fx.Hook{
 		OnStop: func(context.Context) error {
 			terminals.Close()
@@ -309,7 +307,7 @@ func startServer(
 		loops.WithPromptExtra(widgetService.LoopPromptExtra),
 		loops.WithArtifactSurface(widgetService.LoopArtifactSurface),
 	)
-	botService := bots.NewService(store, layout.Bots, manager, loopService, events, logger)
+	botService := bots.NewService(store, layout.Bots, manager, handler, loopService, events, logger)
 	mcpManager.AppVisible = botService.AppVisible
 	loopRunner.Bots = botService
 	jazTools.SetLoops(loopService,
@@ -414,6 +412,8 @@ func startServer(
 			return stopHTTPServer(ctx, srv)
 		},
 	})
+	app.StartMCPManager(lc, mcpManager, manager, logger)
+	app.StartSessionRecovery(lc, store, handler, locks, events, logger, handler.ResumeQueuedTurns)
 	return nil
 }
 

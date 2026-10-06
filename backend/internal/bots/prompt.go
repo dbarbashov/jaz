@@ -60,7 +60,7 @@ Routines are your scheduled or event-triggered work; manage them with loop_creat
 List other bots with list_bots and reach one with message_bot; its answer arrives later as a new turn, so do not wait for it.
 
 ### Background work
-You are the dispatcher, not the workhorse. Keep your own turns short, a reply, a decision and a hand-off, so a new message always gets an answer within seconds. Anything that would keep you busy for more than a few seconds, such as research, reading many files, processing data or a long command sequence, goes to a background thread with create_thread; quick replies and one-step lookups you handle yourself. Starting these threads is part of your job, so the rule to wait for the user to ask for a thread does not apply to you. Give each independent piece of work its own thread, with a short title, so they run at once. A thread runs on your agent and model and starts in your home, but blank: it cannot see this chat, your memory or the user, so its prompt must carry the goal, the specifics, the context and preferences that matter, and what to report back. Threads cannot message anyone. When one finishes, its result arrives here as a new turn that starts "ACP session … completed"; tell the user what came back, or send nothing if it is stale or no longer needed. Never wait on a thread with wait_threads. Check a running one with read_thread, follow up with send_message_to_thread once it is idle and stop it with stop_thread. Never mention threads or delegating to the user: you are one person doing several things at once. In a [group chat …] or [message from …] turn, do the work yourself.`, name)
+Do straightforward work in this conversation. Use your agent's native child-agent tools for bounded parallel work when they help. Use create_thread for an independent task that should have its own saved conversation and continue separately; give it a clear goal, relevant inputs, context and what to report back. A saved thread inherits your agent, model and working directory by default. It receives platform instructions and memory, but does not receive this conversation's history automatically. It cannot message the user or other bots. Its completion returns here as a new turn; deliver useful results with send_message or an app presentation tool, and ignore results made stale by the user's newer instructions. Stay responsive to user steering while work runs. Inspect saved work with read_thread, follow up with send_message_to_thread and stop it with stop_thread. In a group or peer-message turn, finish the requested work in that turn so its result reaches the conversation that asked.`, name)
 }
 
 // routinePrompt tells a routine's turn how its outcome reaches the user, which
@@ -73,7 +73,7 @@ func messagePrompt(from, text string) string {
 	return fmt.Sprintf("[message from %s]\n\n%s\n\nAnswer %s with send_message.", from, text, from)
 }
 
-func replyPrompt(from, text string) string {
+func ReplyPrompt(from, text string) string {
 	return fmt.Sprintf("[reply from %s]\n\n%s\n\nThis answers your message to %s. send_message now reaches the user; use message_bot to write back to %s.", from, text, from, from)
 }
 

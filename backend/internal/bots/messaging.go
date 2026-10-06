@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"slices"
 	"strings"
 	"time"
 
@@ -13,28 +12,11 @@ import (
 	"github.com/wins/jaz/backend/internal/storage"
 )
 
-// turnTimeout bounds how long a turn this service starts keeps its voice. No
-// real turn runs this long; ending the voice early would send the rest of a
-// still-running turn to the wrong chat.
 const turnTimeout = 12 * time.Hour
 
-// voice is where a bot's messages go during a turn this service started for
-// it: into group, or, with no group, back to the bot that wrote to it once the
-// turn ends. Outside such a turn a bot talks in its own chat.
-type voice struct {
-	group string
-	said  []string
-}
-
-// in reports whether the turn is one in group.
-func (v *voice) in(group string) bool {
-	return v != nil && v.group == group
-}
-
 func (s *Service) AppVisible(threadID string) bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.voices[threadID] == nil
+	session, err := s.store.LoadSession(threadID)
+	return err == nil && (session.Turn == nil || session.Turn.Output == nil)
 }
 
 // Message sends text from a thread to a bot or a group, named by id, mention
@@ -62,8 +44,12 @@ func (s *Service) Message(fromThread, ref, text string) error {
 	if to == fromThread {
 		return errors.New("a bot cannot message itself")
 	}
+	if err := s.queue.QueueInternalTurn(context.Background(), to, storage.QueuedMessage{
+		Text: messagePrompt(sender, text), Output: &storage.TurnOutput{ReplyTo: fromThread},
+	}); err != nil {
+		return err
+	}
 	s.announce(fromThread, sessionevents.BotActivityEvent{Kind: "message_sent", Label: session.Title})
-	go s.deliver(fromThread, sender, to, session.Title, text)
 	return nil
 }
 
@@ -78,42 +64,19 @@ func (s *Service) Say(threadID, text string) error {
 	if err != nil || record.Kind != KindBot {
 		return errors.New("only a Jaz bot can send messages")
 	}
-	s.mu.Lock()
-	turn := s.voices[threadID]
-	if turn != nil {
-		turn.said = append(turn.said, text)
-	}
-	s.mu.Unlock()
 	message := sessionevents.RoomMessageEvent{Speaker: "bot", BotID: threadID, Name: session.Title, Text: text}
-	switch {
-	case turn == nil:
+	if session.Turn == nil || session.Turn.Output == nil {
 		return s.appendEvent(sessionevents.Event{SessionID: threadID, Type: sessionevents.TypeRoomMessage, RoomMessage: &message, At: time.Now().UTC()})
-	case turn.group == "":
-		return nil
 	}
-	group, _, err := s.load(turn.group)
+	output := session.Turn.Output
+	if output.ReplyTo != "" {
+		return s.store.AppendTurnReply(threadID, text)
+	}
+	group, _, err := s.load(output.GroupID)
 	if err != nil {
 		return err
 	}
 	return s.post(group, message)
-}
-
-func (s *Service) deliver(fromThread, sender, to, recipient, text string) {
-	ctx, cancel := context.WithTimeout(context.Background(), turnTimeout)
-	defer cancel()
-	said, err := s.ask(ctx, to, messagePrompt(sender, text), sessionevents.BotActivityEvent{Kind: "message_received", Label: sender})
-	if err != nil {
-		s.log.Warn("bot message failed", "from", fromThread, "to", to, "error", err)
-		return
-	}
-	if fromThread == "" || len(said) == 0 {
-		return
-	}
-	if _, err := s.threads.StartInternalTurnWhenIdle(ctx, acp.InternalTurnRequest{Session: fromThread, Message: replyPrompt(recipient, strings.Join(said, "\n\n")), AllowSilence: true}); err != nil {
-		s.log.Warn("bot reply delivery failed", "from", to, "to", fromThread, "error", err)
-		return
-	}
-	s.announce(fromThread, sessionevents.BotActivityEvent{Kind: "message_received", Label: recipient})
 }
 
 // RunRoutine runs a routine's prompt as a hidden turn in its bot's thread once
@@ -127,45 +90,30 @@ func (s *Service) RunRoutine(ctx context.Context, botID, name, prompt string) (a
 	return s.finish(ctx, botID, job.ID)
 }
 
-// ask runs one hidden turn in a bot's thread once it is free, answering
-// another bot, and returns what the bot said in it.
-func (s *Service) ask(ctx context.Context, threadID, prompt string, activity sessionevents.BotActivityEvent) ([]string, error) {
-	turn, job, err := s.begin(ctx, threadID, "", prompt, activity)
+// begin starts a hidden turn in a bot's thread once it is free, its output
+// going to group.
+func (s *Service) begin(ctx context.Context, threadID, group, prompt string, activity sessionevents.BotActivityEvent) (acp.Job, error) {
+	job, err := s.threads.StartInternalTurnWhenIdle(ctx, acp.InternalTurnRequest{
+		Session: threadID, Message: prompt, AllowSilence: true, Output: &storage.TurnOutput{GroupID: group},
+	})
 	if err != nil {
-		return nil, err
+		return acp.Job{}, err
 	}
-	return s.hear(ctx, threadID, turn, job)
-}
-
-// begin starts a hidden turn in a bot's thread once it is free and gives the
-// turn its voice: into group or, with none, back to the bot it answers.
-func (s *Service) begin(ctx context.Context, threadID, group, prompt string, activity sessionevents.BotActivityEvent) (*voice, acp.Job, error) {
-	job, err := s.threads.StartInternalTurnWhenIdle(ctx, acp.InternalTurnRequest{Session: threadID, Message: prompt, AllowSilence: true})
-	if err != nil {
-		return nil, acp.Job{}, err
-	}
-	turn := &voice{group: group}
-	s.mu.Lock()
-	s.voices[threadID] = turn
-	s.mu.Unlock()
 	s.announce(threadID, activity)
-	return turn, job, nil
+	return job, nil
 }
 
-// hear waits for a turn begin started to end and returns what the bot said in
-// it. The turn keeps its voice until it ends, even when ctx is cancelled first.
-func (s *Service) hear(ctx context.Context, threadID string, turn *voice, job acp.Job) ([]string, error) {
-	defer s.endTurn(threadID, turn)
+// hear waits for a turn begin started to end, even when ctx is cancelled
+// first.
+func (s *Service) hear(ctx context.Context, threadID string, job acp.Job) error {
 	done, err := s.finish(ctx, threadID, job.ID)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	if done.State == acp.StateFailed {
-		return nil, fmt.Errorf("%s failed: %s", threadID, done.Error)
+		return fmt.Errorf("%s failed: %s", threadID, done.Error)
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return slices.Clone(turn.said), nil
+	return nil
 }
 
 // finish waits for a turn this service started to end, even when ctx is
@@ -179,14 +127,6 @@ func (s *Service) finish(ctx context.Context, threadID, jobID string) (acp.Job, 
 		return acp.Job{}, fmt.Errorf("%s is still working", threadID)
 	}
 	return done, nil
-}
-
-func (s *Service) endTurn(threadID string, turn *voice) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.voices[threadID] == turn {
-		delete(s.voices, threadID)
-	}
 }
 
 // announce notes in a thread what woke its bot; the note is best-effort.

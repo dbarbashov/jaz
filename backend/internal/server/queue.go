@@ -220,32 +220,6 @@ func writeQueueError(w http.ResponseWriter, err error) {
 	writeError(w, status, err)
 }
 
-func (s *Server) HandleACPTurnFinished(_ context.Context, job acp.Job) {
-	if job.ID == "" {
-		return
-	}
-	unlock := s.lockSession(job.ID)
-	turnCompleted := job.State == acp.StateIdle
-	var completionErr error
-	if turnCompleted {
-		completionErr = s.Store.CompleteSession(job.ID, time.Now().UTC())
-	} else if status := storage.SessionStatusForACPState(job.State, job.StopReason); status != "" {
-		s.setSessionStatusWithError(storage.Session{ID: job.ID}, status, job.Error)
-	}
-	unlock()
-	if completionErr != nil {
-		s.logger().Error("session completion update failed", "session", job.ID, "error", completionErr)
-		return
-	}
-	s.publishMessagesChanged(job.ID)
-	// The turn's token usage was persisted during the turn; tell open pages to
-	// refetch the session so the usage meter reflects it without a reload.
-	s.publishSessionChanged(job.ID)
-	if turnCompleted {
-		s.drainQueueSoon(job.ID)
-	}
-}
-
 func (s *Server) drainQueueSoon(sessionID string) {
 	if strings.TrimSpace(sessionID) == "" {
 		return
@@ -260,8 +234,12 @@ func (s *Server) drainQueueSoon(sessionID string) {
 	}
 }
 
-func (s *Server) StartInternalTurn(_ context.Context, sessionID, message string) error {
-	prompt, ok := storage.NormalizeQueuedMessage(storage.NewInternalQueuedMessage(message))
+func (s *Server) StartInternalTurn(ctx context.Context, sessionID, message string) error {
+	return s.QueueInternalTurn(ctx, sessionID, storage.NewInternalQueuedMessage(message))
+}
+
+func (s *Server) QueueInternalTurn(_ context.Context, sessionID string, prompt storage.QueuedMessage) error {
+	prompt, ok := storage.NormalizeQueuedMessage(prompt.AsInternal())
 	if !ok {
 		return fmt.Errorf("message is required")
 	}
@@ -289,7 +267,7 @@ func (s *Server) enqueueInternalTurn(sessionID string, prompt storage.QueuedMess
 	if !s.canStartQueuedPrompt(session) {
 		return "", false, fmt.Errorf("session runtime is not configured")
 	}
-	session.QueuedMessages = s.assignQueuedMessageIDs(insertInternalQueuedPrompt(session.QueuedMessages, prompt))
+	session.QueuedMessages = s.assignQueuedMessageIDs(append(session.QueuedMessages, prompt.AsInternal()))
 	idle := session.Status == storage.StatusIdle && !s.sessionRuntimeRunning(session)
 	if err := s.Store.SaveSession(session); err != nil {
 		return "", false, err
@@ -400,7 +378,7 @@ func (s *Server) claimNextTurn(sessionID string) (storage.Session, *storage.Queu
 	if session.Title == "" && !prompt.IsInternal() && !prompt.IsAction() {
 		session.Title = titleFromMessage(prompt.Text)
 	}
-	if err := s.Store.SaveSession(session); err != nil {
+	if err := s.Store.ClaimQueuedTurn(session, prompt); err != nil {
 		return storage.Session{}, nil, false, err
 	}
 	if !prompt.IsInternal() && !prompt.IsAction() {
@@ -409,23 +387,9 @@ func (s *Server) claimNextTurn(sessionID string) (storage.Session, *storage.Queu
 	return session, &prompt, true, nil
 }
 
-func insertInternalQueuedPrompt(queue []storage.QueuedMessage, prompt storage.QueuedMessage) []storage.QueuedMessage {
-	prompt = prompt.AsInternal()
-	queue = storage.CanonicalQueuedMessages(queue)
-	index := 0
-	for index < len(queue) && queue[index].IsInternal() {
-		index++
-	}
-	next := append([]storage.QueuedMessage(nil), queue...)
-	next = append(next, storage.QueuedMessage{})
-	copy(next[index+1:], next[index:])
-	next[index] = prompt
-	return storage.CanonicalQueuedMessages(next)
-}
-
 func nextQueuedPromptIndex(prompts []storage.QueuedMessage) int {
 	for i, prompt := range prompts {
-		if prompt.IsInternal() {
+		if !prompt.IsInternal() {
 			return i
 		}
 	}
@@ -637,8 +601,10 @@ func (s *Server) startQueuedPrompt(ctx context.Context, session storage.Session,
 		}
 		if prompt.IsInternal() {
 			if _, err := s.ACP.StartInternalTurn(ctx, acp.InternalTurnRequest{
-				Session: session.ID,
-				Message: prompt.Text,
+				Session:      session.ID,
+				Message:      prompt.Text,
+				Output:       prompt.Output,
+				AllowSilence: true,
 			}); err != nil {
 				return acpSendError(session, err)
 			}

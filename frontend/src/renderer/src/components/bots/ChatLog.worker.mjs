@@ -33,7 +33,7 @@ const html = ['', 'Read these'].map((text) => {
     created_at: '2026-10-06T09:00:00Z',
     blocks: [{ type: 'text', text }, ...attachments],
   }]
-  const { entries } = botChat(messages, [], self, false, [])
+  const { entries } = botChat(messages, [], self, [])
   return renderToStaticMarkup(createElement(QueryClientProvider, { client },
     createElement(ChatLog, { entries, bots: [], named: false, working: [] }),
   ))
@@ -66,7 +66,7 @@ const events = messages.map((text, index) => ({
   at: '2026-10-06T09:00:00Z',
   room_message: { speaker: 'bot', bot_id: 'a', name: 'Researcher', text },
 }))
-const entries = botChat([], events, self, false, []).entries
+const entries = botChat([], events, self, []).entries
 const rootRoute = createRootRoute({
   component: () => createElement(ChatLog, {
     entries, bots, mentionBots: bots.filter((bot) => bot.id !== 'outside'), named: false, working: [],

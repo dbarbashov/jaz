@@ -142,8 +142,8 @@ func TestInternalTurnQueuesWhileParentRunningAndStaysHidden(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(loaded.QueuedMessages) != 2 || !loaded.QueuedMessages[0].IsInternal() || loaded.QueuedMessages[0].Text != "child result" {
-		t.Fatalf("stored queue = %#v, want internal child result before public prompt", loaded.QueuedMessages)
+	if len(loaded.QueuedMessages) != 2 || !loaded.QueuedMessages[1].IsInternal() || loaded.QueuedMessages[1].Text != "child result" {
+		t.Fatalf("stored queue = %#v, want saved public prompt and hidden child result", loaded.QueuedMessages)
 	}
 	if public := sessionview.Public(loaded).QueuedMessages; queuedTexts(public) != "public prompt" {
 		t.Fatalf("public queue = %#v, want only public prompt", public)
@@ -156,7 +156,7 @@ func TestInternalTurnQueuesWhileParentRunningAndStaysHidden(t *testing.T) {
 	}
 }
 
-func TestInternalTurnRunsBeforeExistingPublicQueue(t *testing.T) {
+func TestPublicQueueRunsBeforeBackgroundCompletion(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -194,25 +194,21 @@ func TestInternalTurnRunsBeforeExistingPublicQueue(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("internal turn deadlocked while draining the idle session")
 	}
-	internal := waitForACPInternal(t, manager, "child result")
-	if internal.Session != session.ID {
-		t.Fatalf("internal turn = %#v, want session %s", internal, session.ID)
-	}
+	waitFor(t, time.Second, func() bool { return sentACPRequest(manager).Message == "public prompt" })
 	manager.mu.Lock()
 	internalCalls := manager.internalCalls
 	manager.mu.Unlock()
-	if internalCalls != 1 {
-		t.Fatalf("internal turn started %d times, want 1", internalCalls)
-	}
-	if sent := sentACPRequest(manager); sent.Message != "" {
-		t.Fatalf("public queued prompt ran before internal turn: %#v", sent)
+	if internalCalls != 0 {
+		t.Fatalf("background completion started before user prompt: %d calls", internalCalls)
 	}
 	loaded, err := store.LoadSession(session.ID)
-	if err != nil {
-		t.Fatal(err)
+	if err != nil || queuedTexts(loaded.QueuedMessages) != "child result" {
+		t.Fatalf("queue = %#v, %v; want background completion retained", loaded.QueuedMessages, err)
 	}
-	if queuedTexts(loaded.QueuedMessages) != "public prompt" {
-		t.Fatalf("queue = %#v, want public prompt left after internal turn", loaded.QueuedMessages)
+	srv.HandleACPTurnFinished(context.Background(), acp.Job{ID: session.ID, State: acp.StateIdle})
+	internal := waitForACPInternal(t, manager, "child result")
+	if internal.Session != session.ID {
+		t.Fatalf("completion targeted wrong session: %#v", internal)
 	}
 }
 

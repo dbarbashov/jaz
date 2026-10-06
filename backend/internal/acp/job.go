@@ -157,7 +157,7 @@ type ModeSnapshot struct {
 }
 
 func jobFromSession(session storage.Session, agentName, acpSessionID, cwd, state string) Job {
-	return Job{
+	job := Job{
 		ID:              session.ID,
 		Slug:            session.Slug,
 		Title:           session.Title,
@@ -172,6 +172,10 @@ func jobFromSession(session storage.Session, agentName, acpSessionID, cwd, state
 		CreatedAt:       session.CreatedAt,
 		UpdatedAt:       session.UpdatedAt,
 	}
+	if session.Turn != nil {
+		job.ParentVisible = session.Turn.ParentVisible
+	}
+	return job
 }
 
 func newIdleJob(session storage.Session, agentName, acpSessionID, cwd string, modes ModeState) *jobState {

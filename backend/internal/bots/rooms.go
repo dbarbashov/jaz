@@ -148,28 +148,27 @@ func (s *Service) takeTurns(groupID, member string, place *membership) {
 // memberTurn gives member a turn in the group to answer the messages it has
 // not seen, posting with send_message. With none left, it takes no turn.
 func (s *Service) memberTurn(groupID, member string, place *membership) error {
-	turn, job, err := s.beginMemberTurn(groupID, member, place)
-	if err != nil || turn == nil {
+	job, started, err := s.beginMemberTurn(groupID, member, place)
+	if err != nil || !started {
 		return err
 	}
-	_, err = s.hear(context.Background(), member, turn, job)
-	return err
+	return s.hear(context.Background(), member, job)
 }
 
 // beginMemberTurn starts member's turn with the messages it has not seen and
 // marks them seen once the turn has started. It reads for the member until
 // then, so posts that arrive while the turn waits to start reach it as soon as
 // it runs.
-func (s *Service) beginMemberTurn(groupID, member string, place *membership) (*voice, acp.Job, error) {
+func (s *Service) beginMemberTurn(groupID, member string, place *membership) (acp.Job, bool, error) {
 	record, session, err := s.load(groupID)
 	if err != nil {
-		return nil, acp.Job{}, err
+		return acp.Job{}, false, err
 	}
 	place.reading.Lock()
 	defer place.reading.Unlock()
 	messages, seen, err := s.unseen(groupID, member, place.seen)
 	if err != nil || len(messages) == 0 {
-		return nil, acp.Job{}, err
+		return acp.Job{}, false, err
 	}
 	peers := make([]string, 0, len(record.Members))
 	for _, other := range record.Members {
@@ -178,11 +177,11 @@ func (s *Service) beginMemberTurn(groupID, member string, place *membership) (*v
 		}
 	}
 	prompt := groupTurnPrompt(session.Title, s.name(member), peers, messages)
-	turn, job, err := s.begin(context.Background(), member, groupID, prompt, sessionevents.BotActivityEvent{Kind: "group", Label: session.Title})
+	job, err := s.begin(context.Background(), member, groupID, prompt, sessionevents.BotActivityEvent{Kind: "group", Label: session.Title})
 	if err == nil {
 		place.seen = seen
 	}
-	return turn, job, err
+	return job, true, err
 }
 
 // relay hands member the group messages it has not seen while it works on its
@@ -213,10 +212,7 @@ func (s *Service) steerUnseen(groupID, member string, place *membership) error {
 	if err != nil || len(messages) == 0 {
 		return err
 	}
-	s.mu.Lock()
-	working := s.voices[member].in(groupID)
-	s.mu.Unlock()
-	if !working {
+	if !s.inGroupTurn(member, groupID) {
 		return errors.New("its turn in the group has ended")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), relayTimeout)
@@ -255,4 +251,10 @@ func (s *Service) unseen(groupID, member string, after int64) ([]sessionevents.R
 		messages = messages[len(messages)-maxHistory:]
 	}
 	return messages, seen, nil
+}
+
+// inGroupTurn reports whether bot is working on its turn in group.
+func (s *Service) inGroupTurn(bot, group string) bool {
+	session, err := s.store.LoadSession(bot)
+	return err == nil && session.Turn != nil && session.Turn.Output != nil && session.Turn.Output.GroupID == group
 }

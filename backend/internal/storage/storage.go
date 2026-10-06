@@ -154,9 +154,25 @@ type Session struct {
 }
 
 type Turn struct {
-	PlanRequested   bool   `json:"plan_requested,omitempty"`
-	GoalRequested   bool   `json:"goal_requested,omitempty"`
-	ActiveOperation string `json:"active_operation,omitempty"`
+	PlanRequested   bool           `json:"plan_requested,omitempty"`
+	GoalRequested   bool           `json:"goal_requested,omitempty"`
+	ActiveOperation string         `json:"active_operation,omitempty"`
+	ParentVisible   bool           `json:"parent_visible,omitempty"`
+	NotifyParent    bool           `json:"notify_parent,omitempty"`
+	AllowSilence    bool           `json:"allow_silence,omitempty"`
+	Output          *TurnOutput    `json:"output,omitempty"`
+	PendingMessage  *QueuedMessage `json:"pending_message,omitempty"`
+}
+
+type TurnOutput struct {
+	ReplyTo string   `json:"reply_to,omitempty"`
+	GroupID string   `json:"group_id,omitempty"`
+	Replies []string `json:"replies,omitempty"`
+}
+
+type TurnDelivery struct {
+	SessionID string
+	Message   QueuedMessage
 }
 
 type FeedItem struct {

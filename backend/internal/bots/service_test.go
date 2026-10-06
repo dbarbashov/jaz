@@ -33,7 +33,6 @@ type fakeWorld struct {
 	// would; waiting counts the turns held back so.
 	busy    map[string]chan struct{}
 	waiting map[string]int
-	running map[string]bool
 	steered map[string][]string
 	// steerless makes every thread's agent unable to take messages mid-turn.
 	steerless bool
@@ -53,7 +52,6 @@ func newFakeWorld() *fakeWorld {
 		held:     map[string]chan struct{}{},
 		busy:     map[string]chan struct{}{},
 		waiting:  map[string]int{},
-		running:  map[string]bool{},
 		steered:  map[string][]string{},
 
 		unstartable: map[string]bool{},
@@ -202,6 +200,24 @@ type fakeThreads struct {
 	world *fakeWorld
 }
 
+func (t fakeThreads) QueueInternalTurn(_ context.Context, id string, message storage.QueuedMessage) error {
+	t.world.mu.Lock()
+	defer t.world.mu.Unlock()
+	session := t.world.sessions[id]
+	session.QueuedMessages = append(session.QueuedMessages, message.AsInternal())
+	t.world.sessions[id] = session
+	return nil
+}
+
+func (w *fakeWorld) AppendTurnReply(id, message string) error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	session := w.sessions[id]
+	session.Turn.Output.Replies = append(session.Turn.Output.Replies, message)
+	w.sessions[id] = session
+	return nil
+}
+
 func (t fakeThreads) CreateSession(_ context.Context, req acp.SpawnRequest) (storage.Session, error) {
 	t.world.mu.Lock()
 	t.world.created = append(t.world.created, req)
@@ -232,7 +248,9 @@ func (t fakeThreads) StartInternalTurnWhenIdle(_ context.Context, req acp.Intern
 		return acp.Job{}, errors.New("agent process failed to start")
 	}
 	t.world.prompts[req.Session] = append(t.world.prompts[req.Session], req.Message)
-	t.world.running[req.Session] = true
+	session := t.world.sessions[req.Session]
+	session.Turn = &storage.Turn{Output: req.Output}
+	t.world.sessions[req.Session] = session
 	return acp.Job{ID: req.Session}, nil
 }
 
@@ -241,7 +259,7 @@ func (t fakeThreads) StartInternalTurnWhenIdle(_ context.Context, req acp.Intern
 func (t fakeThreads) SteerInternal(_ context.Context, session, message string) (acp.Job, error) {
 	t.world.mu.Lock()
 	defer t.world.mu.Unlock()
-	if !t.world.running[session] {
+	if t.world.sessions[session].Turn == nil {
 		return acp.Job{}, errors.New("turn ended")
 	}
 	if t.world.steerless {
@@ -271,7 +289,9 @@ func (t fakeThreads) Wait(_ context.Context, req acp.WaitRequest) (acp.Job, erro
 		}
 	}
 	t.world.mu.Lock()
-	t.world.running[req.Session] = false
+	session := t.world.sessions[req.Session]
+	session.Turn = nil
+	t.world.sessions[req.Session] = session
 	t.world.mu.Unlock()
 	return acp.Job{ID: req.Session, State: acp.StateIdle, Assistant: "private notes"}, nil
 }
@@ -288,7 +308,7 @@ func (fakeThreads) SwitchAgent(context.Context, string, string) error {
 }
 
 func newTestService(world *fakeWorld) *Service {
-	world.service = NewService(world, "/bots", fakeThreads{world: world}, world, world, log.New(nil))
+	world.service = NewService(world, "/bots", fakeThreads{world: world}, fakeThreads{world: world}, world, world, log.New(nil))
 	return world.service
 }
 
@@ -608,25 +628,6 @@ func TestASlowMemberDoesNotHoldUpTheOthers(t *testing.T) {
 	waitUntil(t, func() bool { return slices.Contains(world.roomMessages(group.ID), "Research: Here is a meme.") })
 }
 
-func TestNewBotsStartOnALightModelUnlessGivenOne(t *testing.T) {
-	world := newFakeWorld()
-	service := newTestService(world)
-
-	for _, tc := range []struct{ agent, model, want string }{
-		{"", "", "gpt-6-luna/medium"},
-		{acp.AgentClaude, "", "opus[1m]/medium"},
-		{acp.AgentClaude, "sonnet", ""},
-	} {
-		bot, err := service.Create(t.Context(), CreateBot{Name: "Bot " + tc.agent + tc.model, Agent: tc.agent, Model: tc.model})
-		if err != nil {
-			t.Fatal(err)
-		}
-		if got := world.models[bot.ID]; got != tc.want {
-			t.Fatalf("%s bot %q starts on %q, want %q", tc.agent, tc.model, got, tc.want)
-		}
-	}
-}
-
 func TestUpdateChangesNothingWhenAnyPartIsInvalid(t *testing.T) {
 	world := newFakeWorld()
 	world.addBot("gimli", "Gimli")
@@ -657,48 +658,6 @@ func TestRoutineRunsAsAnnouncedTurnInItsBotsThread(t *testing.T) {
 	}
 	if events := world.events["gimli"]; len(events) != 1 || events[0].BotActivity == nil || events[0].BotActivity.Kind != "routine" || events[0].BotActivity.Label != "Digest" {
 		t.Fatalf("bot chat events = %+v", events)
-	}
-}
-
-func TestMessageRelaysReplyToSender(t *testing.T) {
-	world := newFakeWorld()
-	world.addBot("gimli", "Gimli")
-	world.addBot("egg", "dr eggbot")
-	service := newTestService(world)
-	world.replies["egg"] = []string{"Grok on the temporal harness."}
-	held := make(chan struct{})
-	world.held["egg"] = held
-
-	if err := service.Message("gimli", "egg", "What model do you run on?"); err != nil {
-		t.Fatal(err)
-	}
-	waitUntil(t, func() bool { return !service.AppVisible("egg") })
-	if !service.AppVisible("gimli") {
-		t.Error("the sender's user chat was hidden with the private recipient turn")
-	}
-	close(held)
-	waitUntil(t, func() bool { return world.promptCount("gimli") == 1 })
-	if !service.AppVisible("egg") {
-		t.Error("the finished private turn kept later app results hidden")
-	}
-	world.mu.Lock()
-	defer world.mu.Unlock()
-	if asked := world.prompts["egg"][0]; !strings.HasPrefix(asked, "[message from Gimli]") || !strings.Contains(asked, "What model do you run on?") {
-		t.Fatalf("recipient prompt = %q", asked)
-	}
-	if relayed := world.prompts["gimli"][0]; !strings.HasPrefix(relayed, "[reply from dr eggbot]") || !strings.Contains(relayed, "temporal harness") || strings.Contains(relayed, "private notes") {
-		t.Fatalf("relayed reply = %q", relayed)
-	}
-	if len(world.published) == 0 {
-		t.Fatal("nothing was published")
-	}
-	for _, event := range world.published {
-		if event.RoomMessage != nil {
-			t.Fatalf("an answer to a bot reached a chat: %+v", event.RoomMessage)
-		}
-		if event.Seq == 0 {
-			t.Fatalf("published %s without the seq clients match history by", event.Type)
-		}
 	}
 }
 
