@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/Button'
 import { IconButton } from '@/components/ui/IconButton'
 import { Popover } from '@/components/ui/Popover'
 import type { ReasoningEffortOption } from '@/lib/api/types'
+import type { FastModeControl } from '@/lib/agentConfig'
 import type { ModelPickerOption, ModelSelection } from '@/lib/modelPicker'
 import { modelSuggestionFor, modelSuggestionLabel } from '@/lib/modelSuggestion'
 import { reasoningEffortLabel } from '@/lib/reasoningEfforts'
@@ -17,7 +18,6 @@ export function ModelSelect({
   effortOptions,
   loading,
   disabled,
-  selectionDisabled = disabled,
   fastMode,
   placement,
   align,
@@ -29,8 +29,7 @@ export function ModelSelect({
   effortOptions: ReasoningEffortOption[]
   loading?: boolean
   disabled?: boolean
-  selectionDisabled?: boolean
-  fastMode?: { checked: boolean; disabled: boolean; onChange: (checked: boolean) => void }
+  fastMode?: FastModeControl
   placement?: 'above' | 'below'
   align?: 'start' | 'end'
   onChange: (selection: ModelSelection) => void
@@ -106,7 +105,7 @@ export function ModelSelect({
         >
           {view === 'slider' ? (
             <div className="px-2 pb-1">
-              <div className="flex items-center justify-center gap-1">
+              <div className="flex items-center gap-1">
                 {fastMode ? (
                   <IconButton
                     variant="ghost"
@@ -116,7 +115,7 @@ export function ModelSelect({
                     aria-checked={fastMode.checked}
                     title={`Fast Mode ${fastMode.checked ? 'On' : 'Off'}`}
                     disabled={fastMode.disabled}
-                    className={`size-10 ${fastMode.checked ? 'text-primary' : 'text-ink-3'}`}
+                    className={`size-10 shrink-0 ${fastMode.checked ? 'text-primary' : 'text-ink-3'}`}
                     onClick={() => fastMode.onChange(!fastMode.checked)}
                   >
                     <Zap size={15} fill={fastMode.checked ? 'currentColor' : 'none'} />
@@ -127,7 +126,7 @@ export function ModelSelect({
                   type="button"
                   onClick={() => setView('models')}
                   aria-label={`Select model, ${label}`}
-                  className="inline-flex h-6 max-w-full items-center gap-1.5 rounded-control px-2 text-[12px] font-medium transition-colors hover:bg-surface-2 focus-visible:bg-surface-2"
+                  className="inline-flex h-6 min-w-0 items-center gap-1.5 rounded-control px-2 text-[12px] font-medium transition-colors hover:bg-surface-2 focus-visible:bg-surface-2"
                 >
                   <span className="min-w-0 truncate text-ink">
                     {label} <span className={ultra ? 'jaz-gradient' : 'text-ink-2'}>{effortLabel}</span>
@@ -140,7 +139,7 @@ export function ModelSelect({
                   compact
                   options={options}
                   value={effortValue}
-                  disabled={selectionDisabled || loading}
+                  disabled={disabled || loading}
                   onChange={(effort) => onChange({ model: value, effort })}
                 />
               ) : null}
@@ -168,7 +167,7 @@ export function ModelSelect({
                   aria-checked={model.value === selected?.value}
                   autoFocus={model.value === selected?.value || (!selected && index === 0)}
                   onClick={() => selectModel(model)}
-                  disabled={selectionDisabled}
+                  disabled={disabled}
                   className={`flex h-7 w-full items-center gap-2 rounded-control px-2.5 text-left text-[12px] transition-colors hover:bg-surface-2 focus-visible:bg-surface-2 ${model.value === selected?.value ? 'text-ink' : 'text-ink-2'}`}
                 >
                   <span className="min-w-0 flex-1 truncate">{model.label}</span>

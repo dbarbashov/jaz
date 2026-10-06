@@ -78,6 +78,7 @@ export function ComposerCard({
   draftStorage = 'session',
   clearTiming = 'resolved',
   leftSlot,
+  showOptions = true,
   fileRoot,
   attachmentSessionId,
   contexts = [],
@@ -109,6 +110,7 @@ export function ComposerCard({
   clearTiming?: 'immediate' | 'resolved' | 'never'
   /** leading toolbar content (e.g. the new-thread runtime/project controls) */
   leftSlot?: ReactNode
+  showOptions?: boolean
   /** server-side directory the @-mention file picker indexes (a project path,
       session cwd, or '' for the workspace root). undefined disables files */
   fileRoot?: string
@@ -400,7 +402,7 @@ export function ComposerCard({
             {/* Phone: the new-thread controls (agent, model, project, worktree)
                 outgrow one row, so let them wrap and keep send pinned bottom-right. */}
             <div className="flex min-w-0 items-center gap-1.5 max-sm:flex-1 max-sm:flex-wrap">
-              <Popover
+              {showOptions ? <Popover
                 open={optionsOpen}
                 onClose={() => setOptionsOpen(false)}
                 trigger={
@@ -449,8 +451,8 @@ export function ComposerCard({
                   )
                 ) : null}
                 {optionsSlot}
-              </Popover>
-              {leftSlot}
+              </Popover> : null}
+              {showOptions ? leftSlot : null}
               <AnimatePresence initial={false}>
                 {planModeOn ? (
                   <motion.div
@@ -578,7 +580,7 @@ export function Composer({
   onQueuePrompt,
   commands,
   optionsSlot,
-  leftSlot,
+  showOptions,
   onStop,
   onClearGoal,
   onVoice,
@@ -610,7 +612,7 @@ export function Composer({
   onQueuePrompt?: SendMessageHandler
   commands?: AgentSessionCommand[]
   optionsSlot?: ReactNode
-  leftSlot?: ReactNode
+  showOptions?: boolean
   onStop: () => void
   onClearGoal?: () => void
   onVoice?: () => void
@@ -661,7 +663,7 @@ export function Composer({
         onQueuePrompt={onQueuePrompt}
         commands={commands}
         optionsSlot={optionsSlot}
-        leftSlot={leftSlot}
+        showOptions={showOptions}
         onStop={onStop}
         onClearGoal={onClearGoal}
         onVoice={onVoice}

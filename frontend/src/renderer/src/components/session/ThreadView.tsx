@@ -7,7 +7,7 @@ import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } fro
 import { BottomDock } from '@/components/session/BottomDock'
 import { UserBubble } from '@/components/session/Bubble'
 import { Composer, PlanDecisionCard } from '@/components/session/Composer'
-import { useNativeSessionControls } from '@/components/session/useNativeSessionControls'
+import { SessionModelOptions } from '@/components/session/SessionModelOptions'
 import { SelectionContextToolbar } from '@/components/session/SelectionContextToolbar'
 import { useComposerContexts } from '@/components/session/useComposerContexts'
 import { FileReaderLinkProvider, MessageMarkdown, PreviewLinkProvider } from '@/components/session/MessageMarkdown'
@@ -127,6 +127,7 @@ export function ThreadView({
   openDetails,
   placeholder,
   chat,
+  showOptions,
 }: {
   sessionId: string
   message?: number
@@ -136,6 +137,7 @@ export function ThreadView({
   openDetails?: boolean
   placeholder?: string
   chat?: (view: ThreadChatView) => ReactNode
+  showOptions?: boolean
 }) {
   const queryClient = useQueryClient()
   const toast = useToast()
@@ -364,7 +366,6 @@ export function ThreadView({
     () => (data ? deriveSessionView(data, events.data, overviewData) : undefined),
     [data, events.data, overviewData],
   )
-  const nativeControls = useNativeSessionControls(sessionId, derived?.agentSession?.config_options, queue.sessionRunning)
   if (detail.isPending) {
     return <PendingSessionHistory sessionId={sessionId} initialPrompt={initialPrompt} />
   }
@@ -604,8 +605,8 @@ export function ThreadView({
                     placeholder={placeholder}
                     streaming={sessionRunning}
                     commands={derived.agentSession?.commands ?? undefined}
-                    optionsSlot={nativeControls.menu}
-                    leftSlot={nativeControls.picker}
+                    optionsSlot={<SessionModelOptions sessionId={session.id} options={derived.agentSession?.config_options} running={sessionRunning} />}
+                    showOptions={showOptions}
                     planAvailable={planAvailable}
                     planModeActive={Boolean(live?.planRequested) || planActive}
                     goalControlVisible

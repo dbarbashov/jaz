@@ -38,6 +38,7 @@ export function NewSessionHome({
   disabled = false,
   goalAvailable = false,
   leftSlot,
+  optionsSlot,
   draftStorageKey,
   fileRoot,
   onSend,
@@ -47,6 +48,7 @@ export function NewSessionHome({
   disabled?: boolean
   goalAvailable?: boolean
   leftSlot: ReactNode
+  optionsSlot?: ReactNode
   draftStorageKey?: string
   /** directory the composer's @-mention file picker indexes ('' = workspace root) */
   fileRoot?: string
@@ -80,6 +82,7 @@ export function NewSessionHome({
             goalAvailable={goalAvailable}
             disabled={creating || disabled}
             leftSlot={leftSlot}
+            optionsSlot={optionsSlot}
             draftStorageKey={draftStorageKey}
             clearTiming="never"
             fileRoot={fileRoot}

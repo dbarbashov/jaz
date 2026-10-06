@@ -34,10 +34,15 @@ export interface CreateSessionInput {
   model_provider?: string
   model?: string
   reasoning_effort?: string
+  config_options?: Record<string, string>
 }
 
 export async function createSession(input: CreateSessionInput = {}): Promise<Session> {
-  const session = await post<Session>('/v1/sessions', input)
+  const { config_options, ...request } = input
+  const session = await post<Session>('/v1/sessions', request)
+  for (const [id, value] of Object.entries(config_options ?? {})) {
+    await setSessionAgentConfig(session.id, id, value)
+  }
   telemetry.threadCreated({
     worktree: Boolean(input.worktree),
     hasDirectory: Boolean(input.directory),

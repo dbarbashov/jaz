@@ -5,6 +5,7 @@ import { NewThreadOptions } from '@/components/home/NewThreadOptions'
 import { deleteAttachmentDraft } from '@/components/session/composerAttachmentDraftStore'
 import { ProjectPicker } from '@/components/session/NewThreadControls'
 import { AgentModelControls, useNewThreadControls } from '@/components/session/useNewThreadControls'
+import { FastModeOption } from '@/components/session/NativeModelOptions'
 import { Checkbox } from '@/components/ui/Checkbox'
 import { useToast } from '@/components/ui/toast'
 import { ApiError } from '@/lib/api/client'
@@ -220,6 +221,7 @@ function NewSessionPage() {
         disabled={!runtimeAvailable}
         goalAvailable={acpAgentSupportsGoal(runtime)}
         leftSlot={isMobile ? null : composerControls}
+        optionsSlot={controls.fastMode ? <FastModeOption {...controls.fastMode} disabled={creating} /> : null}
         draftStorageKey={NEW_SESSION_DRAFT_KEY}
         // Tokens freeze their absolute expansion at insert time, so re-picking
         // the directory after tagging keeps old tags valid rather than rebasing

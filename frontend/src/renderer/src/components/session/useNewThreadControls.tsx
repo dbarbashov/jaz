@@ -36,6 +36,9 @@ export function useNewThreadControls() {
 
   const model = runtimeModelState(agentSettings, runtime)
   const { usesProvider, provider, selectedProvider } = model
+  const agentOptions = agentSettings?.acp_options?.[runtime]
+  const fastModeConfigID = !usesProvider || provider === agentOptions?.default_model_provider
+    ? agentOptions?.fast_mode_config_id : undefined
   const selectionKey = `${runtime}/${provider}`
   const selection = selections[selectionKey]
   const selectedModel = selection?.model ?? model.defaultModel
@@ -59,6 +62,15 @@ export function useNewThreadControls() {
   })
 
   const composer = composerConfig()
+  const setSelection = (next: ModelSelection) => {
+    const updated = { ...selections, [selectionKey]: { ...selection, ...next } }
+    setSelections(updated)
+    localStorage.setItem(NEW_SESSION_MODELS_KEY, JSON.stringify(updated))
+  }
+  const fastMode = fastModeConfigID ? {
+    checked: selection?.fastMode ?? false,
+    onChange: (checked: boolean) => setSelection({ model: selectedModel, effort, fastMode: checked }),
+  } : undefined
 
   return {
     agentSettings,
@@ -76,11 +88,8 @@ export function useNewThreadControls() {
     modelsLoading,
     reasoningStatus,
     reasoningBlocked,
-    setSelection: (next: ModelSelection) => {
-      const updated = { ...selections, [selectionKey]: next }
-      setSelections(updated)
-      localStorage.setItem(NEW_SESSION_MODELS_KEY, JSON.stringify(updated))
-    },
+    setSelection,
+    fastMode,
     effort,
     effortOptions,
     // The launched config IS the resolved config shown in the UI — same model,
@@ -94,6 +103,8 @@ export function useNewThreadControls() {
       ...(usesProvider && provider ? { model_provider: provider } : {}),
       ...(selectedModel ? { model: selectedModel } : {}),
       ...(effort ? { reasoning_effort: effort } : {}),
+      ...(fastModeConfigID && selection?.fastMode !== undefined
+        ? { config_options: { [fastModeConfigID]: selection.fastMode ? 'on' : 'off' } } : {}),
     }),
   }
 }
@@ -134,6 +145,7 @@ export function AgentModelControls({
           onChange={controls.setSelection}
           effort={controls.effort}
           effortOptions={pickerEffortOptions(controls.effortOptions)}
+          fastMode={controls.fastMode ? { ...controls.fastMode, disabled } : undefined}
         />
       ) : null}
     </>
