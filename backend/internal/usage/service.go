@@ -57,7 +57,7 @@ func usageCategory(sourceType string) string {
 	switch sourceType {
 	case "":
 		return CategoryChat
-	case storage.SourceBotWorker:
+	case storage.SourceBotWorker, storage.SourceBotMember:
 		return storage.SourceBot
 	}
 	return sourceType

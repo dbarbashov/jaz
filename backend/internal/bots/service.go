@@ -28,9 +28,9 @@ type Service struct {
 
 	mu        sync.Mutex
 	followUps map[string]int
-	// members holds each bot's place in each group it belongs to, keyed by
+	// members schedules each bot's turns in each group it belongs to, keyed by
 	// group and bot.
-	members map[string]*membership
+	members map[string]*memberTurns
 }
 
 func NewService(store Store, homes string, threads Threads, queue TurnQueue, routines Routines, events Publisher, logger *log.Logger) *Service {
@@ -43,7 +43,7 @@ func NewService(store Store, homes string, threads Threads, queue TurnQueue, rou
 		events:    events,
 		log:       logger.WithPrefix("bots"),
 		followUps: map[string]int{},
-		members:   map[string]*membership{},
+		members:   map[string]*memberTurns{},
 	}
 }
 
@@ -165,14 +165,22 @@ func (s *Service) Update(ctx context.Context, id string, input UpdateBot) (Bot, 
 			return Bot{}, err
 		}
 	}
-	if input.Agent != nil {
-		if err := s.threads.SwitchAgent(ctx, id, strings.TrimSpace(*input.Agent)); err != nil {
+	if input.Agent != nil || input.Model != nil {
+		threads, err := s.threadsOf(id)
+		if err != nil {
 			return Bot{}, err
 		}
-	}
-	if input.Model != nil {
-		if err := s.threads.SetModel(ctx, id, strings.TrimSpace(*input.Model), strings.TrimSpace(input.ReasoningEffort)); err != nil {
-			return Bot{}, err
+		for _, thread := range threads {
+			if input.Agent != nil {
+				if err := s.threads.SwitchAgent(ctx, thread, strings.TrimSpace(*input.Agent)); err != nil {
+					return Bot{}, err
+				}
+			}
+			if input.Model != nil {
+				if err := s.threads.SetModel(ctx, thread, strings.TrimSpace(*input.Model), strings.TrimSpace(input.ReasoningEffort)); err != nil {
+					return Bot{}, err
+				}
+			}
 		}
 	}
 	if name != "" {
@@ -222,7 +230,35 @@ func (s *Service) Delete(id string) error {
 			return err
 		}
 	}
+	memberships, err := s.store.ListMemberships()
+	if err != nil {
+		return err
+	}
+	for _, membership := range memberships {
+		if membership.BotID != id && membership.GroupID != id {
+			continue
+		}
+		if err := s.store.SetArchived(membership.ThreadID, true); err != nil {
+			return err
+		}
+	}
 	return s.store.SetArchived(id, true)
+}
+
+// threadsOf is a bot's own thread followed by the threads it takes its group
+// turns in, which run on the same agent and model.
+func (s *Service) threadsOf(id string) ([]string, error) {
+	memberships, err := s.store.ListMemberships()
+	if err != nil {
+		return nil, err
+	}
+	threads := []string{id}
+	for _, membership := range memberships {
+		if membership.BotID == id {
+			threads = append(threads, membership.ThreadID)
+		}
+	}
+	return threads, nil
 }
 
 // RoutineOwner returns the bot a new routine belongs to: the bot it names, the
@@ -234,7 +270,7 @@ func (s *Service) RoutineOwner(threadID string, in loops.CreateLoop) (string, er
 		}
 		return in.BotID, nil
 	}
-	if session, err := s.store.LoadSession(threadID); err == nil && session.SourceType == storage.SourceBotWorker {
+	if session, err := s.store.LoadSession(threadID); err == nil && (session.SourceType == storage.SourceBotWorker || session.SourceType == storage.SourceBotMember) {
 		threadID = session.SourceID
 	}
 	if s.isBot(threadID) {
@@ -304,6 +340,7 @@ func (s *Service) view(record storage.BotRecord, session storage.Session) Bot {
 		Preview:   s.preview(session.ID, record.Kind == KindGroup),
 	}
 	if record.Kind == KindGroup {
+		bot.Working = s.working(record)
 		return bot
 	}
 	bot.Model = session.Model
@@ -312,6 +349,21 @@ func (s *Service) view(record storage.BotRecord, session storage.Session) Bot {
 		bot.Agent = ref.Agent
 	}
 	return bot
+}
+
+// working lists the group's members taking a turn in it.
+func (s *Service) working(group storage.BotRecord) []string {
+	var working []string
+	for _, member := range group.Members {
+		membership, err := s.store.LoadMembership(group.ThreadID, member)
+		if err != nil {
+			continue
+		}
+		if thread, err := s.store.LoadSession(membership.ThreadID); err == nil && thread.Turn != nil {
+			working = append(working, member)
+		}
+	}
+	return working
 }
 
 // preview is the newest chat message in a bot's or group's thread; a group's

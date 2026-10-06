@@ -14,9 +14,12 @@ import (
 
 const turnTimeout = 12 * time.Hour
 
+// AppVisible reports whether Jaz shows the apps a thread presents: a bot's own
+// chat does, while a turn answering another bot and a bot's group threads keep
+// them private.
 func (s *Service) AppVisible(threadID string) bool {
 	session, err := s.store.LoadSession(threadID)
-	return err == nil && (session.Turn == nil || session.Turn.Output == nil)
+	return err == nil && session.SourceType != storage.SourceBotMember && (session.Turn == nil || session.Turn.Output == nil)
 }
 
 // Message sends text from a thread to a bot or a group, named by id, mention
@@ -36,12 +39,11 @@ func (s *Service) Message(fromThread, ref, text string) error {
 	if err != nil {
 		return err
 	}
-	sender := s.name(fromThread)
+	from, sender := s.author(fromThread)
 	if target.Kind == KindGroup {
-		speaker := sessionevents.RoomMessageEvent{Speaker: "bot", BotID: fromThread, Name: sender, Text: text}
-		return s.post(target, speaker)
+		return s.post(target, sessionevents.RoomMessageEvent{Speaker: "bot", BotID: from, Name: sender, Text: text})
 	}
-	if to == fromThread {
+	if to == from {
 		return errors.New("a bot cannot message itself")
 	}
 	if err := s.queue.QueueInternalTurn(context.Background(), to, storage.QueuedMessage{
@@ -53,26 +55,34 @@ func (s *Service) Message(fromThread, ref, text string) error {
 	return nil
 }
 
-// Say posts a bot's message: into the group whose turn it is taking, to the
-// bot it is answering, or else into its own chat.
+// Say posts a bot's message: in a turn answering another bot, to that bot;
+// from the bot's thread in a group, into that group; otherwise into its own
+// chat.
 func (s *Service) Say(threadID, text string) error {
 	text = strings.TrimSpace(text)
 	if text == "" {
 		return errors.New("message is required")
 	}
-	record, session, err := s.load(threadID)
-	if err != nil || record.Kind != KindBot {
-		return errors.New("only a Jaz bot can send messages")
+	session, err := s.store.LoadSession(threadID)
+	if err != nil {
+		return err
 	}
-	message := sessionevents.RoomMessageEvent{Speaker: "bot", BotID: threadID, Name: session.Title, Text: text}
-	if session.Turn == nil || session.Turn.Output == nil {
-		return s.appendEvent(sessionevents.Event{SessionID: threadID, Type: sessionevents.TypeRoomMessage, RoomMessage: &message, At: time.Now().UTC()})
-	}
-	output := session.Turn.Output
-	if output.ReplyTo != "" {
+	if session.Turn != nil && session.Turn.Output != nil && session.Turn.Output.ReplyTo != "" {
 		return s.store.AppendTurnReply(threadID, text)
 	}
-	group, _, err := s.load(output.GroupID)
+	bot, name := s.author(threadID)
+	if !s.isBot(bot) {
+		return errors.New("only a Jaz bot can send messages")
+	}
+	message := sessionevents.RoomMessageEvent{Speaker: "bot", BotID: bot, Name: name, Text: text}
+	if bot == threadID {
+		return s.appendEvent(sessionevents.Event{SessionID: threadID, Type: sessionevents.TypeRoomMessage, RoomMessage: &message, At: time.Now().UTC()})
+	}
+	membership, err := s.store.LoadMembershipByThread(threadID)
+	if err != nil {
+		return err
+	}
+	group, _, err := s.load(membership.GroupID)
 	if err != nil {
 		return err
 	}
@@ -88,32 +98,6 @@ func (s *Service) RunRoutine(ctx context.Context, botID, name, prompt string) (a
 	}
 	s.announce(botID, sessionevents.BotActivityEvent{Kind: "routine", Label: name})
 	return s.finish(ctx, botID, job.ID)
-}
-
-// begin starts a hidden turn in a bot's thread once it is free, its output
-// going to group.
-func (s *Service) begin(ctx context.Context, threadID, group, prompt string, activity sessionevents.BotActivityEvent) (acp.Job, error) {
-	job, err := s.threads.StartInternalTurnWhenIdle(ctx, acp.InternalTurnRequest{
-		Session: threadID, Message: prompt, AllowSilence: true, Output: &storage.TurnOutput{GroupID: group},
-	})
-	if err != nil {
-		return acp.Job{}, err
-	}
-	s.announce(threadID, activity)
-	return job, nil
-}
-
-// hear waits for a turn begin started to end, even when ctx is cancelled
-// first.
-func (s *Service) hear(ctx context.Context, threadID string, job acp.Job) error {
-	done, err := s.finish(ctx, threadID, job.ID)
-	if err != nil {
-		return err
-	}
-	if done.State == acp.StateFailed {
-		return fmt.Errorf("%s failed: %s", threadID, done.Error)
-	}
-	return nil
 }
 
 // finish waits for a turn this service started to end, even when ctx is
@@ -168,11 +152,20 @@ func (s *Service) resolve(ref string) (string, error) {
 	return "", fmt.Errorf("no bot or group named %q", ref)
 }
 
-// name is how a thread signs its messages: a bot by its name, any other
-// thread as Jaz.
-func (s *Service) name(threadID string) string {
-	if _, session, err := s.load(threadID); err == nil {
-		return session.Title
+// author is who a thread speaks as: a bot's own thread and its group threads
+// as the bot, any other thread as Jaz.
+func (s *Service) author(threadID string) (string, string) {
+	if membership, err := s.store.LoadMembershipByThread(threadID); err == nil {
+		threadID = membership.BotID
 	}
-	return "Jaz"
+	if _, session, err := s.load(threadID); err == nil {
+		return threadID, session.Title
+	}
+	return threadID, "Jaz"
+}
+
+// name is how a thread signs its messages.
+func (s *Service) name(threadID string) string {
+	_, name := s.author(threadID)
+	return name
 }

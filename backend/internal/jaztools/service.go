@@ -335,6 +335,7 @@ func (s *Service) surface(r *http.Request) toolSurface {
 // tool surface: a backend worker to its restricted one, a bot to its own.
 var surfaceBySourceType = map[string]toolSurface{
 	storage.SourceBot:               botSurface,
+	storage.SourceBotMember:         botSurface,
 	storage.SourceMemorySearch:      searchWorkerSurface,
 	storage.SourceMemorySource:      sourceWorkerSurface,
 	storage.SourceMemoryDream:       sourceWorkerSurface,

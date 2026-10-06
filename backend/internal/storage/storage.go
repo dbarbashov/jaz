@@ -27,7 +27,10 @@ const (
 	SourceBot     = "bot"
 	// SourceBotWorker tags a thread a bot started for background work; its
 	// source id is the bot.
-	SourceBotWorker    = "bot_worker"
+	SourceBotWorker = "bot_worker"
+	// SourceBotMember tags the thread a bot takes its turns in for one group;
+	// its source id is the bot.
+	SourceBotMember    = "bot_member"
 	SourceMemoryDream  = "memory_dream"
 	SourceMemorySearch = "memory_search"
 	SourceMemorySource = "memory_source"
@@ -166,7 +169,6 @@ type Turn struct {
 
 type TurnOutput struct {
 	ReplyTo string   `json:"reply_to,omitempty"`
-	GroupID string   `json:"group_id,omitempty"`
 	Replies []string `json:"replies,omitempty"`
 }
 

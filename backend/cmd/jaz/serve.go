@@ -413,7 +413,9 @@ func startServer(
 		},
 	})
 	app.StartMCPManager(lc, mcpManager, manager, logger)
-	app.StartSessionRecovery(lc, store, handler, locks, events, logger, handler.ResumeQueuedTurns)
+	app.StartSessionRecovery(lc, store, handler, locks, events, logger, func() error {
+		return errors.Join(handler.ResumeQueuedTurns(), botService.ResumeGroups())
+	})
 	return nil
 }
 

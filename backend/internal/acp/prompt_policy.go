@@ -23,7 +23,7 @@ var restrictedWorkerPolicies = map[string]string{
 // mcpServerPolicyForSourceType is a worker's restricted policy, the bot
 // policy for a bot's own thread, or every server.
 func mcpServerPolicyForSourceType(sourceType string) string {
-	if sourceType == storage.SourceBot {
+	if sourceType == storage.SourceBot || sourceType == storage.SourceBotMember {
 		return MCPServerPolicyBot
 	}
 	return restrictedWorkerPolicies[sourceType]

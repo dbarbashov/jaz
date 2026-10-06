@@ -81,3 +81,44 @@ func botFromDB(row botdb.Bot) storage.BotRecord {
 		ThreadID: row.ThreadID, Kind: row.Kind, Shape: row.Shape, Color: row.Color, Pinned: int(row.Pinned), Members: members,
 	}
 }
+
+func (s *Store) SaveMembership(membership storage.BotMembership) error {
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+	return botdb.New(s.db).SaveMembership(context.Background(), botdb.SaveMembershipParams{
+		GroupID: membership.GroupID, BotID: membership.BotID, ThreadID: membership.ThreadID, Seen: membership.Seen,
+	})
+}
+
+func (s *Store) LoadMembership(groupID, botID string) (storage.BotMembership, error) {
+	row, err := botdb.New(s.db).GetMembership(context.Background(), botdb.GetMembershipParams{GroupID: groupID, BotID: botID})
+	return membershipFromDB(row, err)
+}
+
+func (s *Store) LoadMembershipByThread(threadID string) (storage.BotMembership, error) {
+	row, err := botdb.New(s.db).GetMembershipByThread(context.Background(), threadID)
+	return membershipFromDB(row, err)
+}
+
+func (s *Store) ListMemberships() ([]storage.BotMembership, error) {
+	rows, err := botdb.New(s.db).ListMemberships(context.Background())
+	if err != nil {
+		return nil, err
+	}
+	memberships := make([]storage.BotMembership, 0, len(rows))
+	for _, row := range rows {
+		membership, _ := membershipFromDB(row, nil)
+		memberships = append(memberships, membership)
+	}
+	return memberships, nil
+}
+
+func membershipFromDB(row botdb.BotMembership, err error) (storage.BotMembership, error) {
+	if errors.Is(err, sql.ErrNoRows) {
+		return storage.BotMembership{}, storage.ErrMembershipNotFound
+	}
+	if err != nil {
+		return storage.BotMembership{}, err
+	}
+	return storage.BotMembership{GroupID: row.GroupID, BotID: row.BotID, ThreadID: row.ThreadID, Seen: row.Seen}, nil
+}

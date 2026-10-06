@@ -182,8 +182,6 @@ export function subtasksDoing(threads: SpawnedThreadView[]): string | undefined 
 
 function busyWith(activity?: BotActivityEvent): string | undefined {
   switch (activity?.kind) {
-    case 'group':
-      return `working in ${activity.label}`
     case 'message_received':
       return `working on ${activity.label}'s message`
     case 'routine':

@@ -60,8 +60,8 @@ describe('bot chat log', () => {
   })
 
   test('work labels follow the active conversation without showing private notes', () => {
-    const events = [said(2, 'Hey.'), woke(3, 'group', 'Team'), wrote(4, 'Reading the CRM.\n\nChecking two more threads.')]
-    expect(botChat([user(1, 1, 'hi')], events, self, []).work).toEqual({ doing: 'working in Team' })
+    const events = [said(2, 'Hey.'), woke(3, 'message_received', 'Pip'), wrote(4, 'Reading the CRM.\n\nChecking two more threads.')]
+    expect(botChat([user(1, 1, 'hi')], events, self, []).work).toEqual({ doing: "working on Pip's message" })
     expect(botChat([user(1, 1, 'hi')], [...events, woke(5, 'routine', 'Say hi')], self, []).work).toEqual({ doing: 'running Say hi' })
     expect(botChat([user(1, 1, 'hi'), user(2, 6, 'still there?')], events, self, []).work.doing).toBeUndefined()
   })

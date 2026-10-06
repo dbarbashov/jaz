@@ -10,8 +10,12 @@ import (
 
 type Querier interface {
 	GetBot(ctx context.Context, threadID string) (Bot, error)
+	GetMembership(ctx context.Context, arg GetMembershipParams) (BotMembership, error)
+	GetMembershipByThread(ctx context.Context, threadID string) (BotMembership, error)
 	ListBots(ctx context.Context) ([]Bot, error)
+	ListMemberships(ctx context.Context) ([]BotMembership, error)
 	PinBot(ctx context.Context, arg PinBotParams) error
+	SaveMembership(ctx context.Context, arg SaveMembershipParams) error
 	UnpinBots(ctx context.Context) error
 	UpsertBot(ctx context.Context, arg UpsertBotParams) error
 }

@@ -24,7 +24,7 @@ func Resume(ctx context.Context, store storage.SessionStore, runtime Runtime, lo
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		if candidate.Status != storage.StatusInterrupted || (candidate.SourceType != "" && candidate.SourceType != storage.SourceBot && candidate.SourceType != storage.SourceBotWorker) {
+		if candidate.Status != storage.StatusInterrupted || !resumable(candidate.SourceType) {
 			continue
 		}
 		unlock := locks.Lock(candidate.ID)
@@ -56,4 +56,14 @@ func resume(ctx context.Context, store storage.SessionStore, runtime Runtime, id
 	}
 	events.Publish(sessionevents.Event{SessionID: session.ID, Type: sessionevents.TypeSession})
 	return err
+}
+
+// resumable reports whether chats with this source resume after a restart:
+// the user's own chats and the threads bots work in.
+func resumable(sourceType string) bool {
+	switch sourceType {
+	case "", storage.SourceBot, storage.SourceBotWorker, storage.SourceBotMember:
+		return true
+	}
+	return false
 }
