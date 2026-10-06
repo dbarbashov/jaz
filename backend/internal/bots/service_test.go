@@ -3,6 +3,7 @@ package bots
 import (
 	"cmp"
 	"context"
+	"errors"
 	"slices"
 	"strings"
 	"sync"
@@ -28,6 +29,13 @@ type fakeWorld struct {
 	loops     []loops.Loop
 	published []sessionevents.Event
 	held      map[string]chan struct{}
+	// busy holds a thread's next turn back, as another turn running there
+	// would.
+	busy    map[string]chan struct{}
+	running map[string]bool
+	steered map[string][]string
+	// steerless makes every thread's agent unable to take messages mid-turn.
+	steerless bool
 	service   *Service
 }
 
@@ -40,6 +48,9 @@ func newFakeWorld() *fakeWorld {
 		replies:  map[string][]string{},
 		models:   map[string]string{},
 		held:     map[string]chan struct{}{},
+		busy:     map[string]chan struct{}{},
+		running:  map[string]bool{},
+		steered:  map[string][]string{},
 	}
 }
 
@@ -200,9 +211,31 @@ func (t fakeThreads) CreateSession(_ context.Context, req acp.SpawnRequest) (sto
 
 func (t fakeThreads) StartInternalTurnWhenIdle(_ context.Context, req acp.InternalTurnRequest) (acp.Job, error) {
 	t.world.mu.Lock()
+	busy := t.world.busy[req.Session]
+	t.world.mu.Unlock()
+	if busy != nil {
+		<-busy
+	}
+	t.world.mu.Lock()
 	defer t.world.mu.Unlock()
 	t.world.prompts[req.Session] = append(t.world.prompts[req.Session], req.Message)
+	t.world.running[req.Session] = true
 	return acp.Job{ID: req.Session}, nil
+}
+
+// SteerInternal hands a message to the thread's running turn, as the manager
+// does, failing when no turn runs or its agent cannot take it.
+func (t fakeThreads) SteerInternal(_ context.Context, session, message string) (acp.Job, error) {
+	t.world.mu.Lock()
+	defer t.world.mu.Unlock()
+	if !t.world.running[session] {
+		return acp.Job{}, errors.New("turn ended")
+	}
+	if t.world.steerless {
+		return acp.Job{}, acp.ErrSteeringUnsupported
+	}
+	t.world.steered[session] = append(t.world.steered[session], message)
+	return acp.Job{ID: session}, nil
 }
 
 // Wait runs the turn: the bot sends its scripted message, if any, the way it
@@ -224,6 +257,9 @@ func (t fakeThreads) Wait(_ context.Context, req acp.WaitRequest) (acp.Job, erro
 			return acp.Job{}, err
 		}
 	}
+	t.world.mu.Lock()
+	t.world.running[req.Session] = false
+	t.world.mu.Unlock()
 	return acp.Job{ID: req.Session, State: acp.StateIdle, Assistant: "private notes"}, nil
 }
 
@@ -324,10 +360,17 @@ func TestMembersFollowUpOnlyWhenMentioned(t *testing.T) {
 	}
 	world.replies["b"] = []string{"[@Research] can you check the numbers?"}
 	world.replies["a"] = []string{"Checked."}
+	release := make(chan struct{})
+	world.held["a"] = release
 
 	if err := service.Post(group.ID, "[@Marketing](bot:b) where is the launch draft?"); err != nil {
 		t.Fatal(err)
 	}
+	// Research answers after Marketing's turn has ended, as a real agent's
+	// slower turn would, so the answer reaches Marketing only if it is
+	// addressed.
+	waitUntil(t, func() bool { return world.promptCount("a") == 1 && service.AppVisible("b") })
+	close(release)
 	waitUntil(t, func() bool { return slices.Contains(world.roomMessages(group.ID), "Research: Checked.") })
 	time.Sleep(20 * time.Millisecond)
 	if world.promptCount("a") != 1 || world.promptCount("b") != 1 {
@@ -341,7 +384,87 @@ func TestMembersFollowUpOnlyWhenMentioned(t *testing.T) {
 	}
 }
 
-func TestPostsWhileAMemberIsBusyFoldIntoOneMoreTurn(t *testing.T) {
+// progressDuringTurn has Research, working on its turn, mention Marketing with
+// a first finding and then post two more while Marketing works on its own
+// turn, and returns once Marketing's agent has taken or refused them.
+func progressDuringTurn(t *testing.T, world *fakeWorld, service *Service, releaseMarketing chan struct{}) string {
+	t.Helper()
+	group, err := service.CreateGroup("Launch", []string{"a", "b"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	world.held["a"] = make(chan struct{})
+	world.held["b"] = releaseMarketing
+	if err := service.Post(group.ID, "[@Research](bot:a) dig into pricing"); err != nil {
+		t.Fatal(err)
+	}
+	waitUntil(t, func() bool { return !service.AppVisible("a") })
+	say := func(text string) {
+		if err := service.Say("a", text); err != nil {
+			t.Fatal(err)
+		}
+	}
+	say("[@Marketing](bot:b) first finding")
+	waitUntil(t, func() bool { return !service.AppVisible("b") })
+	say("second finding")
+	say("third finding")
+	return group.ID
+}
+
+func TestPostsDuringAMembersTurnReachItBeforeTheTurnEnds(t *testing.T) {
+	world := newFakeWorld()
+	world.addBot("a", "Research")
+	world.addBot("b", "Marketing")
+	service := newTestService(world)
+	release := make(chan struct{})
+	progressDuringTurn(t, world, service, release)
+
+	steered := func() string {
+		world.mu.Lock()
+		defer world.mu.Unlock()
+		return strings.Join(world.steered["b"], "\n")
+	}
+	waitUntil(t, func() bool {
+		return strings.Contains(steered(), "Research: second finding") && strings.Contains(steered(), "Research: third finding")
+	})
+	if strings.Count(steered(), "second finding") != 1 || strings.Contains(steered(), "first finding") {
+		t.Fatalf("Marketing was handed:\n%s", steered())
+	}
+	close(release)
+	close(world.held["a"])
+	waitUntil(t, func() bool {
+		service.mu.Lock()
+		defer service.mu.Unlock()
+		return len(service.waking) == 0
+	})
+	if world.promptCount("b") != 1 {
+		world.mu.Lock()
+		defer world.mu.Unlock()
+		t.Fatalf("Marketing took %d turns: %q", len(world.prompts["b"]), world.prompts["b"])
+	}
+}
+
+func TestPostsAnAgentCannotTakeMidTurnFoldIntoOneMoreTurn(t *testing.T) {
+	world := newFakeWorld()
+	world.addBot("a", "Research")
+	world.addBot("b", "Marketing")
+	world.steerless = true
+	world.replies["b"] = []string{"Looking at the first one."}
+	service := newTestService(world)
+	release := make(chan struct{})
+	progressDuringTurn(t, world, service, release)
+
+	close(release)
+	waitUntil(t, func() bool { return world.promptCount("b") == 2 })
+	close(world.held["a"])
+	world.mu.Lock()
+	defer world.mu.Unlock()
+	if next := world.prompts["b"][1]; !strings.Contains(next, "second finding") || !strings.Contains(next, "third finding") || strings.Contains(next, "first finding") {
+		t.Fatalf("Marketing's next turn:\n%s", next)
+	}
+}
+
+func TestPostsBeforeAMembersTurnStartsReachItAsItStarts(t *testing.T) {
 	world := newFakeWorld()
 	world.addBot("a", "Research")
 	world.addBot("b", "Marketing")
@@ -350,25 +473,38 @@ func TestPostsWhileAMemberIsBusyFoldIntoOneMoreTurn(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	idle := make(chan struct{})
+	world.busy["b"] = idle
 	release := make(chan struct{})
-	world.held["a"] = release
+	world.held["b"] = release
 
-	post := func(text string) {
-		if err := service.Post(group.ID, "[@Research](bot:a) "+text); err != nil {
-			t.Fatal(err)
-		}
+	if err := service.Message("a", group.ID, "[@Marketing](bot:b) draft the launch post"); err != nil {
+		t.Fatal(err)
 	}
-	post("first")
-	waitUntil(t, func() bool { return world.promptCount("a") == 1 })
-	post("second")
-	post("third")
+	waitUntil(t, func() bool {
+		service.mu.Lock()
+		defer service.mu.Unlock()
+		return len(service.waking) == 1
+	})
+	if err := service.Message("a", group.ID, "[@Marketing](bot:b) keep it under 100 words"); err != nil {
+		t.Fatal(err)
+	}
+	close(idle)
+	waitUntil(t, func() bool {
+		world.mu.Lock()
+		defer world.mu.Unlock()
+		return len(world.steered["b"]) == 1
+	})
 	close(release)
-	waitUntil(t, func() bool { return world.promptCount("a") == 2 })
-	time.Sleep(20 * time.Millisecond)
+	waitUntil(t, func() bool {
+		service.mu.Lock()
+		defer service.mu.Unlock()
+		return len(service.waking) == 0
+	})
 	world.mu.Lock()
 	defer world.mu.Unlock()
-	if len(world.prompts["a"]) != 2 || !strings.Contains(world.prompts["a"][1], "third") {
-		t.Fatalf("turns = %q", world.prompts["a"])
+	if len(world.prompts["b"]) != 1 || !strings.Contains(world.prompts["b"][0], "draft the launch post") || !strings.Contains(world.steered["b"][0], "keep it under 100 words") {
+		t.Fatalf("turns %q, handed mid-turn %q", world.prompts["b"], world.steered["b"])
 	}
 }
 

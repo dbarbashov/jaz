@@ -155,6 +155,7 @@ type SteerRequest struct {
 	Attachments   []storage.Attachment
 	GoalRequested bool
 	ParentVisible bool
+	transcript    sendTranscriptMode
 }
 
 type InteractiveAnswer struct {

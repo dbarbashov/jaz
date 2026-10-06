@@ -209,6 +209,12 @@ func (m *Manager) sendOnce(ctx context.Context, req SendRequest, opts sendOption
 	return job.Snapshot(), nil
 }
 
+// SteerInternal hands a hidden message to the thread's running turn, as
+// StartInternalTurn starts a hidden turn.
+func (m *Manager) SteerInternal(ctx context.Context, session, message string) (Job, error) {
+	return m.Steer(ctx, SteerRequest{Session: session, Message: message, transcript: sendTranscriptHidden})
+}
+
 func (m *Manager) Steer(ctx context.Context, req SteerRequest) (Job, error) {
 	job, err := m.job(req.Session)
 	if err != nil {
@@ -251,7 +257,9 @@ func (m *Manager) Steer(ctx context.Context, req SteerRequest) (Job, error) {
 		return Job{}, err
 	}
 	handoff := m.cancelPendingPermissionsForSteer(job, done)
-	m.touchJobAttention(job)
+	if req.transcript == sendTranscriptUserMessage {
+		m.touchJobAttention(job)
+	}
 	m.publishACP(job.eventView())
 	go m.runSteerCallAfterHandoff(context.Background(), job, done, handoff, method, promptReq)
 	return job.Snapshot(), nil
@@ -274,8 +282,10 @@ func (m *Manager) reserveSteer(job *jobState, req SteerRequest, contexts []stora
 	if err := m.store.StartSessionTurn(job.ID, turn); err != nil {
 		return nil, fmt.Errorf("reserve steering: %w", err)
 	}
-	if err := storage.AppendUserMessage(m.store, job.ID, req.Message, contexts, req.Attachments); err != nil {
-		return nil, errors.Join(fmt.Errorf("append user message: %w", err), m.store.StartSessionTurn(job.ID, previous))
+	if req.transcript == sendTranscriptUserMessage {
+		if err := storage.AppendUserMessage(m.store, job.ID, req.Message, contexts, req.Attachments); err != nil {
+			return nil, errors.Join(fmt.Errorf("append user message: %w", err), m.store.StartSessionTurn(job.ID, previous))
+		}
 	}
 	job.turn.goalRequested = turn.GoalRequested
 	if req.ParentVisible {

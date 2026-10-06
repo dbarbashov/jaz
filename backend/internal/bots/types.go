@@ -64,6 +64,7 @@ type UpdateBot struct {
 type Threads interface {
 	CreateSession(context.Context, acp.SpawnRequest) (storage.Session, error)
 	StartInternalTurnWhenIdle(context.Context, acp.InternalTurnRequest) (acp.Job, error)
+	SteerInternal(ctx context.Context, session, message string) (acp.Job, error)
 	Wait(context.Context, acp.WaitRequest) (acp.Job, error)
 	SwitchAgent(ctx context.Context, sessionID, agent string) error
 	SetModel(ctx context.Context, sessionID, model, effort string) error
