@@ -1,5 +1,5 @@
 import { MCPAppFrame } from '@/components/apps/MCPAppFrame'
-import { UserBubble } from '@/components/session/Bubble'
+import { MessageActions } from '@/components/session/MessageActions'
 import { PermissionCard } from '@/components/session/TranscriptPermissions'
 import { UserMessageMarkdown } from '@/components/session/MessageMarkdown'
 import { SystemEventRow } from '@/components/session/SystemEventRow'
@@ -30,7 +30,7 @@ export function ChatLog({
 }) {
   const avatar = (id?: string) => bots.find((bot) => bot.id === id)?.avatar ?? GONE
   return (
-    <div className="flex flex-col">
+    <div className="@container flex flex-col">
       {entries.map((entry, index) => {
         const previous = entries[index - 1]
         const next = entries[index + 1]
@@ -44,7 +44,7 @@ export function ChatLog({
           <div key={entry.key} className={opensRun ? 'mt-4 first:mt-0' : 'mt-1'}>
             {stamped ? <p className="pb-3 text-center text-[12px] text-ink-3">{messageTime(entry.at)}</p> : null}
             {entry.kind === 'user' ? (
-              <UserBubble text={entry.text} createdAt={entry.at} />
+              <ChatBubble text={entry.text} at={entry.at} mine />
             ) : entry.kind === 'activity' ? (
               <SystemEventRow event={entry.event} onOpen={entry.event.loop_created ? onOpenRoutines : undefined} />
             ) : entry.kind === 'app' ? (
@@ -56,7 +56,7 @@ export function ChatLog({
                 {named ? (
                   <span className="w-7 shrink-0">{closesRun ? <BotAvatar avatar={avatar(entry.botId)} size={28} /> : null}</span>
                 ) : null}
-                <div className="flex min-w-0 max-w-[84%] flex-col items-start gap-1">
+                <div className="flex min-w-0 flex-1 flex-col items-start gap-1">
                   {named && opensRun ? (
                     <span
                       className="px-1 text-[12px] font-medium"
@@ -65,9 +65,7 @@ export function ChatLog({
                       {entry.name}
                     </span>
                   ) : null}
-                  <div className="min-w-0 rounded-card bg-surface px-3.5 py-2.5 text-sm [overflow-wrap:break-word] select-text">
-                    <UserMessageMarkdown text={entry.text} />
-                  </div>
+                  <ChatBubble text={entry.text} at={entry.at} />
                 </div>
               </div>
             )}
@@ -87,6 +85,26 @@ export function ChatLog({
           </div>
         </div>
       ))}
+    </div>
+  )
+}
+
+// One message, rounded like a messenger's: the person's own on the right in the
+// brand tint, a bot's on the left, with copy and time beside it on hover. A
+// narrow log drops them so they never squeeze the message.
+function ChatBubble({ text, at, mine = false }: { text: string; at: string; mine?: boolean }) {
+  return (
+    <div className={`group/message flex w-full items-center gap-3 ${mine ? 'flex-row-reverse' : ''}`}>
+      <div
+        className={`min-w-0 max-w-[84%] rounded-[20px] px-4 py-2.5 text-sm [overflow-wrap:break-word] select-text ${
+          mine ? 'bg-primary-soft dark:bg-[color-mix(in_oklab,var(--color-primary)_40%,var(--color-surface))]' : 'bg-surface'
+        }`}
+      >
+        <UserMessageMarkdown text={text} />
+      </div>
+      <div className="shrink-0 whitespace-nowrap @max-xl:hidden">
+        <MessageActions text={text} createdAt={at} />
+      </div>
     </div>
   )
 }
