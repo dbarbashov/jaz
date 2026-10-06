@@ -722,7 +722,7 @@ export interface Bot {
 }
 
 export interface BotActivityEvent {
-  kind: 'routine' | 'message_sent' | 'message_received' | 'group'
+  kind: 'routine' | 'message_sent' | 'message_received' | 'group' | 'unreachable'
   label: string
 }
 

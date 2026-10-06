@@ -88,13 +88,15 @@ func addressed(members, mentioned []string, fromMember bool) []string {
 }
 
 // deliver shows member the group messages it has not seen, one delivery at a
-// time per member so none is shown twice.
+// time per member so none is shown twice, and tells the group when member
+// cannot be reached.
 func (s *Service) deliver(group storage.BotRecord, member string, fromMember bool) {
 	lock := s.deliveryLock(group.ThreadID, member)
 	lock.Lock()
 	defer lock.Unlock()
 	if err := s.deliverLocked(group, member, fromMember); err != nil {
 		s.log.Warn("group delivery failed", "group", group.ThreadID, "member", member, "error", err)
+		s.announce(group.ThreadID, sessionevents.BotActivityEvent{Kind: "unreachable", Label: s.name(member) + " · " + err.Error()})
 	}
 }
 
@@ -170,7 +172,7 @@ func (s *Service) spendFollowUp(groupID string) bool {
 }
 
 // join creates the thread member takes the group's turns in: a hidden thread
-// on the bot's agent, model and home.
+// that the agent manager runs like the bot itself.
 func (s *Service) join(groupID, member string) (storage.BotMembership, error) {
 	bot, err := s.store.LoadSession(member)
 	if err != nil {
@@ -180,19 +182,12 @@ func (s *Service) join(groupID, member string) (storage.BotMembership, error) {
 	if err != nil {
 		return storage.BotMembership{}, err
 	}
-	request := acp.SpawnRequest{
-		Slug:            bot.Title + " in " + group.Title,
-		Title:           bot.Title + " in " + group.Title,
-		ModelProvider:   bot.ModelProvider,
-		Model:           bot.Model,
-		ReasoningEffort: bot.ReasoningEffort,
-		SourceType:      storage.SourceBotMember,
-		SourceID:        member,
-	}
-	if ref := bot.RuntimeRef; ref != nil {
-		request.ACPAgent, request.Directory = ref.Agent, ref.Cwd
-	}
-	thread, err := s.threads.CreateSession(context.Background(), request)
+	thread, err := s.threads.CreateSession(context.Background(), acp.SpawnRequest{
+		Slug:       bot.Title + " in " + group.Title,
+		Title:      bot.Title + " in " + group.Title,
+		SourceType: storage.SourceBotMember,
+		SourceID:   member,
+	})
 	if err != nil {
 		return storage.BotMembership{}, err
 	}

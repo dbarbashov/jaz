@@ -22,3 +22,12 @@ Verification: full Go tests, bot tests under race, 306 frontend tests, typecheck
 The review replaced the in-memory turn scheduler (taking/owed flags, a wake loop and a startup pass that rebuilt lost wakes) with the server's durable per-thread queue, which already runs queued turns when a thread is free and survives restarts. A post now goes to every member it addresses and every member whose group thread is taking a turn as it is posted: delivery steers it into that turn, or queues a turn on the thread when it takes none or cannot take the messages, and only then marks them seen. Deciding at post time closed a gap where a message posted in a turn's last moments was judged after the turn ended and never delivered. The follow-up cap is spent only when something is delivered. Net change: 367 lines removed, 187 added.
 
 Verification: full Go tests, bot tests 50 times plain and 10 times under race, and controls for turns in the main chat, mid-turn steering, the post-time turn check, a refused queue, the follow-up cap, unsynced models, apps shown from a group thread and missing group identity all fail on the expected test. The first-turn fallback to a bot's own last post is no longer reachable by any test, because deliveries now keep the read position current; it remains for groups that predate group threads.
+
+## No One Working After A Group Post
+
+- [x] Find why a post mentioning CEO in "Business Dev Team" started no turn.
+- [x] Fix it and make delivery failures visible in the group.
+
+CEO's group thread was never created: thread creation copied the bot's stored model provider, which for Claude is the agent's own name, and the effort check then looked for a provider catalog named "claude" ("unknown model provider"). Bot subtasks copied it the same way, which is why no bot worker has ever been created. The agent manager now creates a bot's subtasks and group threads alike from the bot, passing its provider only when it is a real one, and the group shows "Couldn't reach CEO · …" when a delivery fails instead of failing silently.
+
+Verification: a real-manager regression with a Claude bot creates both threads and fails with the old copy on the same error; full Go and 307 frontend tests, typecheck and lint pass; bot tests pass 40 times plain and 10 under race; removing the notice fails its test.

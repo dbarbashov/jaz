@@ -147,7 +147,7 @@ export function botChat(
     } else if (activity) {
       // Messaging another bot happens within a turn; anything else starts one.
       const opens = activity.kind !== 'message_sent'
-      if (activity.kind === 'message_sent' || activity.kind === 'message_received') entries.push({ kind: 'activity', key, at, event })
+      if (activity.kind === 'message_sent' || activity.kind === 'message_received' || activity.kind === 'unreachable') entries.push({ kind: 'activity', key, at, event })
       if (opens) turn = { at, user: false, activity }
     } else if (event.type === 'mcp_app' && event.mcp_app && (event.mcp_app.presented || turn?.user || turn?.activity?.kind === 'routine') && isPresentedApp(event.mcp_app, entrypoints)) {
       entries.push({ kind: 'app', key, at, app: event.mcp_app })

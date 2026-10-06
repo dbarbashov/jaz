@@ -59,6 +59,11 @@ describe('bot chat log', () => {
     expect(shape(entries)).toEqual(['user: hi', 'bot: Hey.', '· message_sent', '· agent_switch'])
   })
 
+  test('a group shows when a member could not be reached', () => {
+    const { entries } = botChat([], [woke(2, 'unreachable', 'CEO · unknown model provider')], self, [])
+    expect(shape(entries)).toEqual(['· unreachable'])
+  })
+
   test('work labels follow the active conversation without showing private notes', () => {
     const events = [said(2, 'Hey.'), woke(3, 'message_received', 'Pip'), wrote(4, 'Reading the CRM.\n\nChecking two more threads.')]
     expect(botChat([user(1, 1, 'hi')], events, self, []).work).toEqual({ doing: "working on Pip's message" })

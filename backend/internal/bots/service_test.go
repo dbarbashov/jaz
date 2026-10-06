@@ -616,11 +616,14 @@ func TestMessagesAQueueRefusedReachTheNextTurn(t *testing.T) {
 	if err := service.Post(group.ID, "[@Marketing](bot:b) draft the launch post"); err != nil {
 		t.Fatal(err)
 	}
-	waitUntil(t, func() bool {
+	unreachable := func() bool {
 		world.mu.Lock()
 		defer world.mu.Unlock()
-		return !world.unqueueable[marketing]
-	})
+		return slices.ContainsFunc(world.events[group.ID], func(event sessionevents.Event) bool {
+			return event.BotActivity != nil && event.BotActivity.Kind == "unreachable" && strings.HasPrefix(event.BotActivity.Label, "Marketing · queue unavailable")
+		})
+	}
+	waitUntil(t, unreachable)
 	if err := service.Post(group.ID, "[@Marketing](bot:b) and keep it short"); err != nil {
 		t.Fatal(err)
 	}
@@ -759,7 +762,6 @@ func TestGroupTurnsRunInTheBotsGroupThreadAndPostAsTheBot(t *testing.T) {
 	world := newFakeWorld()
 	world.addBot("a", "Research")
 	world.addBot("b", "Marketing")
-	world.sessions["a"] = storage.Session{ID: "a", Title: "Research", Model: "opus", ReasoningEffort: "high", RuntimeRef: &storage.RuntimeRef{Agent: acp.AgentClaude, Cwd: "/bots/a"}}
 	service := newTestService(world)
 	group, err := service.CreateGroup("Launch", []string{"a", "b"})
 	if err != nil {
@@ -792,8 +794,7 @@ func TestGroupTurnsRunInTheBotsGroupThreadAndPostAsTheBot(t *testing.T) {
 	if len(world.prompts["a"]) != 0 || len(world.prompts[membership.ThreadID]) != 1 {
 		t.Fatalf("turns in Research's chat %q, in its group thread %q", world.prompts["a"], world.prompts[membership.ThreadID])
 	}
-	created := world.created[len(world.created)-1]
-	if created.SourceType != storage.SourceBotMember || created.SourceID != "a" || created.ACPAgent != acp.AgentClaude || created.Directory != "/bots/a" || created.Model != "opus" || created.ReasoningEffort != "high" {
+	if created := world.created[len(world.created)-1]; created.SourceType != storage.SourceBotMember || created.SourceID != "a" {
 		t.Fatalf("group thread created as %+v", created)
 	}
 }
