@@ -35,6 +35,8 @@
   --color-primary: oklch(0.53 0.17 264);
   --color-primary-strong: oklch(0.46 0.17 264);
   --color-primary-soft: oklch(0.95 0.028 264);
+  /* the person's own messages in a chat */
+  --color-bubble-sent: var(--color-primary-soft);
   /* text/icons that sit on a primary fill */
   --color-on-primary: oklch(1 0 0);
   /* A translucent wash so selected text reads the same on every surface
@@ -159,6 +161,8 @@
   --color-primary: oklch(0.72 0.14 264);
   --color-primary-strong: oklch(0.8 0.12 264);
   --color-primary-soft: oklch(0.32 0.06 264);
+  /* The soft tint sinks into a dark ground; a sent message needs more primary to stand out. */
+  --color-bubble-sent: color-mix(in oklab, var(--color-primary) 40%, var(--color-surface));
   --color-on-primary: oklch(0.2 0.03 264);
   --color-selection: color-mix(in oklab, var(--color-primary) 38%, transparent);
   --color-accent: oklch(0.74 0.14 55);

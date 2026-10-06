@@ -24,8 +24,8 @@ test('picker only offers efforts the selected model supports', () => {
 
 test('saved picker choices keep agents and providers separate and discard obsolete modes', () => {
   const selections = {
-    'codex/openai': { model: 'gpt-6-astra', effort: 'medium' },
-    'codex/openrouter': { model: 'qwen/qwen3', effort: '' },
+    'codex/openai': { model: 'gpt-6-astra', effort: 'medium', fastMode: true },
+    'codex/openrouter': { model: 'qwen/qwen3', effort: '', fastMode: false },
     'claude/': { model: 'opus[1m]', effort: 'ultracode' },
   }
   expect(parseModelSelections(JSON.stringify(selections))).toEqual(selections)

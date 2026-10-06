@@ -6,6 +6,7 @@ export type ModelPickerOption = Pick<ModelSuggestion, 'value' | 'label' | 'alias
 export interface ModelSelection {
   model: string
   effort: string
+  fastMode?: boolean
 }
 
 export function pickerEffortOptions(options: ReasoningEffortOption[]): ReasoningEffortOption[] {
@@ -22,7 +23,7 @@ export function parseModelSelections(raw: string | null): Record<string, ModelSe
     return Object.fromEntries(Object.entries(parsed).flatMap(([key, entry]) => {
       const value = entry as Partial<ModelSelection> | null
       return value != null && typeof value.model === 'string' && typeof value.effort === 'string'
-        ? [[key, { model: value.model, effort: value.effort }]] : []
+        ? [[key, { model: value.model, effort: value.effort, ...(typeof value.fastMode === 'boolean' ? { fastMode: value.fastMode } : {}) }]] : []
     }))
   } catch {
     return {}

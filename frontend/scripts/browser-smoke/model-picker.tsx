@@ -32,7 +32,7 @@ export async function exerciseModelPicker(): Promise<void> {
       claude: { enabled: true, model: 'opus[1m]', reasoning_effort: 'xhigh' },
     },
     acp_options: {
-      codex: { local: true, supports_auth: false, reasoning_efforts: [], provider_mode: 'agent_defaults', model_providers: providers, models: codex },
+      codex: { local: true, supports_auth: false, reasoning_efforts: [], provider_mode: 'agent_defaults', model_providers: providers, models: codex, default_model_provider: 'openai', fast_mode_config_id: 'fast-mode' },
       claude: { local: true, supports_auth: false, reasoning_efforts: [], models: claude },
     },
   }
@@ -148,6 +148,10 @@ export async function exerciseModelPicker(): Promise<void> {
     render(0)
     await until(() => controls?.modelSuggestions.length === 3)
     await openPicker()
+    await click(button('Fast Mode'))
+    await until(() => controls.sessionConfig({ directory: '', worktree: false }).config_options?.['fast-mode'] === 'on')
+    await close()
+    await openPicker()
     await window.smoke.key('Tab')
     if (document.activeElement !== slider()) {
       throw new Error('Natural Tab sequence missed the slider')
@@ -248,10 +252,16 @@ export async function exerciseModelPicker(): Promise<void> {
     settings.acp.codex = { ...settings.acp.codex, model_provider: 'openrouter', model: 'qwen/qwen3', reasoning_effort: 'high' }
     client.setQueryData(keys.agentSettings, { ...settings })
     await until(() => configIs('codex', 'qwen/qwen3', 'high'))
+    if (controls.fastMode || controls.sessionConfig({ directory: '', worktree: false }).config_options) {
+      throw new Error('Fast Mode leaked to a different provider')
+    }
     settings.acp.codex = { ...settings.acp.codex, model_provider: 'openai', model: 'gpt-6-astra' }
     client.setQueryData(keys.agentSettings, { ...settings })
     await until(() => configIs('codex', 'gpt-6-astra', 'ultra'))
     await openPicker()
+    if (button('Fast Mode')?.getAttribute('aria-checked') !== 'true') {
+      throw new Error('Fast Mode was lost after changing model, agent, provider or remounting')
+    }
     await openModels()
     await click(button('GPT-6 Astra'))
     await until(() => Boolean(slider()))
