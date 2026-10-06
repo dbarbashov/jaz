@@ -21,7 +21,7 @@ export const voiceSettingsQuery = queryOptions({
 
 export const voiceAvailableQuery = queryOptions({
   ...voiceSettingsQuery,
-  select: (settings) => settings.providers.some((provider) => provider.available),
+  select: (settings) => settings.providers.some((provider) => provider.id === settings.provider && provider.available),
 })
 
 export function updateVoiceSettings(settings: Pick<VoiceSettings, 'provider' | 'voice'>): Promise<VoiceSettings> {
