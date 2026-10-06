@@ -59,9 +59,7 @@ func TestGroupMentionRouting(t *testing.T) {
 				t.Fatal(err)
 			}
 			waitUntil(t, func() bool {
-				service.mu.Lock()
-				defer service.mu.Unlock()
-				return len(service.waking) == 0
+				return turnsInFlight(service) == 0
 			})
 			for _, id := range record.Members {
 				want := 0
@@ -118,9 +116,7 @@ func TestUnresolvedUserMentionDoesNotBroadcast(t *testing.T) {
 			t.Fatal(err)
 		}
 		waitUntil(t, func() bool {
-			service.mu.Lock()
-			defer service.mu.Unlock()
-			return len(service.waking) == 0
+			return turnsInFlight(service) == 0
 		})
 		if world.promptCount("a") != 0 || world.promptCount("b") != 0 {
 			t.Fatal("unresolved mention woke the group")

@@ -264,10 +264,12 @@ func (m *Manager) Steer(ctx context.Context, req SteerRequest) (Job, error) {
 	if err != nil {
 		return Job{}, err
 	}
-	handoff := job.currentPromptHandoff(done)
+	var handoff <-chan struct{}
 	if req.transcript == sendTranscriptUserMessage {
 		handoff = m.cancelPendingPermissionsForSteer(job, done)
 		m.touchJobAttention(job)
+	} else {
+		handoff = job.currentPromptHandoff(done)
 	}
 	m.publishACP(job.eventView())
 	go m.runSteerCallAfterHandoff(context.Background(), job, done, handoff, method, promptReq)
