@@ -28,7 +28,7 @@ func Resume(ctx context.Context, store storage.SessionStore, runtime Runtime, lo
 			continue
 		}
 		unlock := locks.Lock(candidate.ID)
-		err := resume(ctx, store, runtime, candidate, events)
+		err := resume(ctx, store, runtime, candidate.ID, events)
 		unlock()
 		if err != nil {
 			logger.Error("resume interrupted chat", "session", candidate.ID, "error", err)
@@ -37,12 +37,12 @@ func Resume(ctx context.Context, store storage.SessionStore, runtime Runtime, lo
 	return ctx.Err()
 }
 
-func resume(ctx context.Context, store storage.SessionStore, runtime Runtime, candidate storage.Session, events *sessionevents.Bus) error {
-	session, err := store.LoadSession(candidate.ID)
+func resume(ctx context.Context, store storage.SessionStore, runtime Runtime, id string, events *sessionevents.Bus) error {
+	session, err := store.LoadSession(id)
 	if err != nil {
 		return err
 	}
-	if session.Status != storage.StatusInterrupted || session.Archived || !session.UpdatedAt.Equal(candidate.UpdatedAt) || ctx.Err() != nil {
+	if session.Status != storage.StatusInterrupted || session.Archived || ctx.Err() != nil {
 		return ctx.Err()
 	}
 	startCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
