@@ -36,6 +36,7 @@ type AgentOptions struct {
 	AuthProviderID   string                  `json:"auth_provider_id,omitempty"`
 	SupportsAuth     bool                    `json:"supports_auth"`
 	FastModeConfigID string                  `json:"fast_mode_config_id,omitempty"`
+	FastModeModels   []string                `json:"fast_mode_models,omitempty"`
 }
 
 type setSessionModelRequest struct {
@@ -62,7 +63,6 @@ const (
 
 type agentPolicy struct {
 	modelConfigID           string
-	fastModeConfigID        string
 	modelMetaKey            string
 	effortConfigID          string
 	effortInModelSuffix     bool
@@ -128,7 +128,6 @@ func agentPolicyForAgent(agentName string) agentPolicy {
 	case AgentCodex:
 		return agentPolicy{
 			modelConfigID:           sessionConfigModel,
-			fastModeConfigID:        "fast-mode",
 			effortConfigID:          sessionConfigReasoningEffort,
 			effortInModelSuffix:     true,
 			providerInLaunch:        true,
@@ -712,7 +711,7 @@ func newACPSessionInfo(raw json.RawMessage, session acpschema.NewSessionResponse
 	}
 }
 
-func AgentOptionsForConfig(name string, cfg AgentConfig) AgentOptions {
+func AgentOptionsForConfig(name string, cfg AgentConfig, root string) AgentOptions {
 	options := AgentOptions{
 		ReasoningEfforts: agentPolicyForAgent(CanonicalAgentName(name)).reasoningEffortOptions(),
 		DefaultModel:     strings.TrimSpace(cfg.Model),
@@ -726,8 +725,11 @@ func AgentOptionsForConfig(name string, cfg AgentConfig) AgentOptions {
 	options.ProviderMode = strings.TrimSpace(cfg.ProviderMode)
 	options.AuthProviderID = strings.TrimSpace(cfg.AuthProviderID)
 	options.SupportsAuth = cfg.SupportsAuth()
-	if agentOwnsModelMetadata(name, cfg.ModelProvider) {
-		options.FastModeConfigID = agentPolicyForAgent(CanonicalAgentName(name)).fastModeConfigID
+	if CanonicalAgentName(name) == AgentCodex && codexNativeOpenAIProvider(cfg.ModelProvider) {
+		options.FastModeModels = codexFastModeModels(cfg, root)
+		if len(options.FastModeModels) > 0 {
+			options.FastModeConfigID = "fast-mode"
+		}
 	}
 	return options
 }

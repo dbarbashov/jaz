@@ -7,7 +7,8 @@ import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } fro
 import { BottomDock } from '@/components/session/BottomDock'
 import { UserBubble } from '@/components/session/Bubble'
 import { Composer, PlanDecisionCard } from '@/components/session/Composer'
-import { SessionModelOptions } from '@/components/session/SessionModelOptions'
+import { NativeModelOptions } from '@/components/session/NativeModelOptions'
+import { useSessionConfig } from '@/components/session/useSessionConfig'
 import { SelectionContextToolbar } from '@/components/session/SelectionContextToolbar'
 import { useComposerContexts } from '@/components/session/useComposerContexts'
 import { FileReaderLinkProvider, MessageMarkdown, PreviewLinkProvider } from '@/components/session/MessageMarkdown'
@@ -140,6 +141,7 @@ export function ThreadView({
   showOptions?: boolean
 }) {
   const queryClient = useQueryClient()
+  const config = useSessionConfig(sessionId)
   const toast = useToast()
   const reportHistoryError = useCallback((message: string) => {
     toast(`Couldn't load earlier history: ${message}`, 'danger')
@@ -605,7 +607,7 @@ export function ThreadView({
                     placeholder={placeholder}
                     streaming={sessionRunning}
                     commands={derived.agentSession?.commands ?? undefined}
-                    optionsSlot={<SessionModelOptions sessionId={session.id} options={derived.agentSession?.config_options} running={sessionRunning} />}
+                    optionsSlot={<NativeModelOptions options={derived.agentSession?.config_options} running={sessionRunning} pending={config.isPending} onChange={(id, value) => config.mutate({ id, value })} />}
                     showOptions={showOptions}
                     planAvailable={planAvailable}
                     planModeActive={Boolean(live?.planRequested) || planActive}

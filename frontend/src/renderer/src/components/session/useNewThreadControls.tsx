@@ -8,6 +8,7 @@ import { agentSettingsQuery } from '@/lib/api/settings'
 import { composerConfig } from '@/lib/jazDefaults'
 import { useModelReasoningState } from '@/lib/modelReasoning'
 import { parseModelSelections, pickerEffortOptions, type ModelSelection } from '@/lib/modelPicker'
+import { modelSuggestionFor } from '@/lib/modelSuggestion'
 import { NEW_SESSION_AGENT_KEY, NEW_SESSION_MODELS_KEY } from '@/lib/newSessionConfig'
 
 export function useNewThreadControls() {
@@ -37,8 +38,6 @@ export function useNewThreadControls() {
   const model = runtimeModelState(agentSettings, runtime)
   const { usesProvider, provider, selectedProvider } = model
   const agentOptions = agentSettings?.acp_options?.[runtime]
-  const fastModeConfigID = !usesProvider || provider === agentOptions?.default_model_provider
-    ? agentOptions?.fast_mode_config_id : undefined
   const selectionKey = `${runtime}/${provider}`
   const selection = selections[selectionKey]
   const selectedModel = selection?.model ?? model.defaultModel
@@ -62,6 +61,9 @@ export function useNewThreadControls() {
   })
 
   const composer = composerConfig()
+  const fastModeConfigID = selectedModel && (!usesProvider || provider === agentOptions?.default_model_provider)
+    && agentOptions?.fast_mode_models?.includes(modelSuggestionFor(modelSuggestions, selectedModel)?.value ?? selectedModel)
+    ? agentOptions.fast_mode_config_id : undefined
   const setSelection = (next: ModelSelection) => {
     const updated = { ...selections, [selectionKey]: { ...selection, ...next } }
     setSelections(updated)

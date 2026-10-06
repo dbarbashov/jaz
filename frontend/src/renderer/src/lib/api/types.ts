@@ -1257,6 +1257,7 @@ export interface ACPAgentOptions {
   auth_provider_id?: string
   supports_auth: boolean
   fast_mode_config_id?: string
+  fast_mode_models?: string[]
 }
 
 export interface AgentSettings {

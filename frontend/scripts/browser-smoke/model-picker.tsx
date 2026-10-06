@@ -32,7 +32,7 @@ export async function exerciseModelPicker(): Promise<void> {
       claude: { enabled: true, model: 'opus[1m]', reasoning_effort: 'xhigh' },
     },
     acp_options: {
-      codex: { local: true, supports_auth: false, reasoning_efforts: [], provider_mode: 'agent_defaults', model_providers: providers, models: codex, default_model_provider: 'openai', fast_mode_config_id: 'fast-mode' },
+      codex: { local: true, supports_auth: false, reasoning_efforts: [], provider_mode: 'agent_defaults', model_providers: providers, models: codex, default_model_provider: 'openai', fast_mode_config_id: 'fast-mode', fast_mode_models: ['gpt-6-astra', 'gpt-5.6-sol'] },
       claude: { local: true, supports_auth: false, reasoning_efforts: [], models: claude },
     },
   }
@@ -169,6 +169,9 @@ export async function exerciseModelPicker(): Promise<void> {
     await openModels()
     await click(button('GPT-5.6 Terra'))
     await until(() => configIs('codex', 'gpt-5.6-terra', 'medium'))
+    if (button('Fast Mode') || controls.sessionConfig({ directory: '', worktree: false }).config_options) {
+      throw new Error('Fast Mode was offered for a model without native support')
+    }
     if (slider().max !== '3') {
       throw new Error('Terra shows unavailable Ultracode')
     }
