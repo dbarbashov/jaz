@@ -17,6 +17,8 @@ var ErrSteeringUnsupported = errors.New("acp steering unsupported")
 
 var errTurnEnded = fmt.Errorf("%w: agent turn ended before steering", ErrSteeringUnsupported)
 
+var errQuestionPending = errors.New("the turn is waiting for an answer")
+
 type turnInProgressError struct {
 	done      <-chan struct{}
 	finishing bool
@@ -210,7 +212,9 @@ func (m *Manager) sendOnce(ctx context.Context, req SendRequest, opts sendOption
 }
 
 // SteerInternal hands a hidden message to the thread's running turn, as
-// StartInternalTurn starts a hidden turn.
+// StartInternalTurn starts a hidden turn. A user's steer supersedes the
+// questions the turn is waiting on; a hidden message must not, so it is
+// refused while one is pending.
 func (m *Manager) SteerInternal(ctx context.Context, session, message string) (Job, error) {
 	return m.Steer(ctx, SteerRequest{Session: session, Message: message, transcript: sendTranscriptHidden})
 }
@@ -226,9 +230,13 @@ func (m *Manager) Steer(ctx context.Context, req SteerRequest) (Job, error) {
 	job.mu.RLock()
 	method := job.steerMethod
 	running := job.turn != nil && (job.State == StateRunning || job.State == StateStarting)
+	asking := len(job.Permissions) > 0
 	job.mu.RUnlock()
 	if !running {
 		return Job{}, errTurnEnded
+	}
+	if asking && req.transcript == sendTranscriptHidden {
+		return Job{}, errQuestionPending
 	}
 	if method == steerUnsupported {
 		return Job{}, ErrSteeringUnsupported
@@ -256,8 +264,9 @@ func (m *Manager) Steer(ctx context.Context, req SteerRequest) (Job, error) {
 	if err != nil {
 		return Job{}, err
 	}
-	handoff := m.cancelPendingPermissionsForSteer(job, done)
+	handoff := job.currentPromptHandoff(done)
 	if req.transcript == sendTranscriptUserMessage {
+		handoff = m.cancelPendingPermissionsForSteer(job, done)
 		m.touchJobAttention(job)
 	}
 	m.publishACP(job.eventView())

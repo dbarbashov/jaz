@@ -126,6 +126,43 @@ func TestManagerSteerInternalReachesTheTurnWithoutAUserMessage(t *testing.T) {
 	}
 }
 
+func TestManagerSteerInternalLeavesAPendingQuestionToTheUser(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := newFakeAgentManager(t, store, t.TempDir(), map[string]string{
+		"JAZ_FAKE_ACP_PROMPT_QUEUEING":   "1",
+		"JAZ_FAKE_ACP_STRICT_ELICIT_HOL": "1",
+	})
+	manager.Events = sessionevents.New()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	spawned, err := manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: "fake", Slug: "fake-internal-question"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _, _ = manager.Cancel(context.Background(), spawned.SessionID) }()
+
+	sub := manager.Events.Subscribe(ctx, spawned.SessionID)
+	if _, err := manager.StartInternalTurn(ctx, acp.InternalTurnRequest{Session: spawned.SessionID, Message: "ask then block"}); err != nil {
+		t.Fatal(err)
+	}
+	waitForSteerEventType(t, sub, "permission_request")
+
+	if _, err := manager.SteerInternal(ctx, spawned.SessionID, "Research: second finding"); err == nil {
+		t.Fatal("a hidden message was handed to a turn waiting on the user")
+	}
+	job, err := manager.Status(spawned.SessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(job.Permissions) != 1 || job.State != acp.StateRunning {
+		t.Fatalf("question after a hidden message: state=%s permissions=%+v", job.State, job.Permissions)
+	}
+}
+
 func TestManagerSteerCancelsPendingQuestion(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {
