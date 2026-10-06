@@ -21,8 +21,8 @@ import { markdownImageSource } from '@/lib/markdownImages'
 import { findFileReferences, parseFileReference, resolveFileLink, type FileReference } from '@shared/fileReader'
 import { CodeBlock } from './CodeBlock'
 import { encodeMention } from './mentionCodec'
-import { BotMentionContext, MentionPill } from '@/components/session/mentions'
-import { botIdFromTarget, botTarget } from '@/lib/bots'
+import { MentionPill } from '@/components/session/mentions'
+import { botIdFromTarget } from '@/lib/bots'
 
 const PreviewLinkContext = createContext<((url: string) => void) | null>(null)
 const FileReaderLinkContext = createContext<((file: FileReference) => void) | null>(null)
@@ -155,18 +155,18 @@ function remarkLineBreaks() {
   }
 }
 
-function remarkBotMentions(names: Map<string, string>) {
+function remarkMentions(mentions: ReadonlyMap<string, string>) {
   return (tree: MarkdownNode) => {
     rewriteTextNodes(tree, (value) => {
       const nodes: MarkdownNode[] = []
       let end = 0
       for (const match of value.matchAll(/\[@([^[\]\r\n]+)\]/g)) {
-        const id = names.get(match[1])
-        if (!id) continue
+        const target = mentions.get(match[1])
+        if (!target) continue
         nodes.push({ type: 'text', value: value.slice(end, match.index) })
         nodes.push({
           type: 'link',
-          url: botTarget(id),
+          url: target,
           children: [{ type: 'text', value: '@' + match[1] }],
         })
         end = match.index + match[0].length
@@ -246,22 +246,19 @@ function BaseMarkdown({
   text,
   className,
   Link,
+  mentions,
   remarkPlugins = REMARK_PLUGINS,
 }: {
   text: string
   className: string
   Link: AnchorComponent
+  mentions?: ReadonlyMap<string, string>
   remarkPlugins?: NonNullable<Options['remarkPlugins']>
 }) {
   const files = useContext(MarkdownFileContext)
-  const bots = useContext(BotMentionContext)
-  const plugins = useMemo(() => {
-    const names = new Map<string, string>()
-    for (const bot of bots) {
-      names.set(bot.name, names.has(bot.name) ? '' : bot.id)
-    }
-    return [...remarkPlugins, [remarkBotMentions, names]] satisfies Options['remarkPlugins']
-  }, [bots, remarkPlugins])
+  const plugins = useMemo(() => mentions?.size
+    ? [...remarkPlugins, [remarkMentions, mentions]] satisfies Options['remarkPlugins']
+    : remarkPlugins, [mentions, remarkPlugins])
   const prepared = useMemo(() => normalizeMath(text), [text])
   const components = useMemo<Components>(() => ({ a: Link, img: MarkdownImage, pre: CodeBlock, table: MarkdownTable }), [Link])
   return (
@@ -348,8 +345,14 @@ export const RenderedMarkdown = memo(function RenderedMarkdown({
 // User messages already carry mentions as Markdown links, so they use the same
 // chat renderer without the assistant-only expansion of bare skill names. Typed
 // line breaks are kept as <br>, since users press Enter to start a new line.
-export const UserMessageMarkdown = memo(function UserMessageMarkdown({ text }: { text: string }) {
-  return <BaseMarkdown text={text} className="chat-prose" Link={MessageMarkdownLink} remarkPlugins={USER_REMARK_PLUGINS} />
+export const UserMessageMarkdown = memo(function UserMessageMarkdown({
+  text,
+  mentions,
+}: {
+  text: string
+  mentions?: ReadonlyMap<string, string>
+}) {
+  return <BaseMarkdown text={text} mentions={mentions} className="chat-prose" Link={MessageMarkdownLink} remarkPlugins={USER_REMARK_PLUGINS} />
 })
 
 // Shared renderer for assistant prose: GitHub-flavored Markdown + LaTeX via KaTeX.

@@ -50,7 +50,8 @@ export function GroupChat({ group, bots }: { group: Bot; bots: Bot[] }) {
   // Members' status comes from the bot list, polled briskly while the room is
   // open so "is working" rows keep up with the round.
   useQuery({ ...botsQuery, refetchInterval: 2_000 })
-  const working = bots.filter((bot) => group.members?.includes(bot.id) && bot.status === 'running')
+  const members = useMemo(() => bots.filter((bot) => group.members?.includes(bot.id)), [bots, group.members])
+  const working = members.filter((bot) => bot.status === 'running')
   const reducedMotion = useReducedMotion()
 
   useEffect(() => {
@@ -91,7 +92,7 @@ export function GroupChat({ group, bots }: { group: Bot; bots: Bot[] }) {
               <ChatLog
                 entries={entries}
                 bots={bots}
-                mentionBots={bots.filter((bot) => group.members?.includes(bot.id))}
+                mentionBots={members}
                 named
                 working={working.map((bot) => ({ bot }))}
               />

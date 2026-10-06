@@ -14,6 +14,10 @@ func TestGroupMentionRouting(t *testing.T) {
 		want []string
 	}{
 		{"named", "[@Business Opportunist] Please check this.", []string{"b"}},
+		{"entity name", "[@R&amp;D] Please check this.", []string{"f"}},
+		{"numeric entity name", "[@R&#0038;D] Please check this.", []string{"f"}},
+		{"escaped entity", "[@R\\&amp;D] Please check this.", []string{"h"}},
+		{"escaped name", "[@Research\\_Lab] Please check this.", []string{"g"}},
 		{"linked", "[@Business Opportunist](bot:b) Please check this.", []string{"b"}},
 		{"duplicate", "[@Business Opportunist] [@Business Opportunist](bot:b)", []string{"b"}},
 		{"explicit ID wins", "[@Business Opportunist](bot:c)", []string{"c"}},
@@ -36,8 +40,11 @@ func TestGroupMentionRouting(t *testing.T) {
 			world.addBot("c", "Planner")
 			world.addBot("d", "Shared name")
 			world.addBot("e", "Shared name")
+			world.addBot("f", "R&D")
+			world.addBot("g", "Research_Lab")
+			world.addBot("h", "R&amp;D")
 			service := newTestService(world)
-			group, err := service.CreateGroup("Discovery", []string{"a", "b", "c", "d", "e"})
+			group, err := service.CreateGroup("Discovery", []string{"a", "b", "c", "d", "e", "f", "g", "h"})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -67,4 +74,60 @@ func TestGroupMentionRouting(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestNamedGroupMentionKeepsItsRecipientAfterRename(t *testing.T) {
+	world := newFakeWorld()
+	world.addBot("a", "Researcher")
+	world.addBot("b", "Business Opportunist")
+	service := newTestService(world)
+	group, err := service.CreateGroup("Discovery", []string{"a", "b"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := service.Post(group.ID, "[@Business Opportunist] Please check this."); err != nil {
+		t.Fatal(err)
+	}
+	waitUntil(t, func() bool { return world.promptCount("b") == 1 })
+	if err := world.UpdateSessionTitle("b", "Strategy"); err != nil {
+		t.Fatal(err)
+	}
+	if err := world.UpdateSessionTitle("a", "Business Opportunist"); err != nil {
+		t.Fatal(err)
+	}
+	events, err := world.LoadSessionEvents(group.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := events[0].RoomMessage.Text; got != "[@Business Opportunist](bot:b) Please check this." {
+		t.Fatalf("saved mention lost its recipient: %q", got)
+	}
+}
+
+func TestUnresolvedUserMentionDoesNotBroadcast(t *testing.T) {
+	world := newFakeWorld()
+	world.addBot("a", "Research")
+	world.addBot("b", "Research")
+	service := newTestService(world)
+	group, err := service.CreateGroup("Discovery", []string{"a", "b"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, message := range []string{"[@Research] Check this.", "[@Missing] Check this."} {
+		if err := service.Post(group.ID, message); err != nil {
+			t.Fatal(err)
+		}
+		waitUntil(t, func() bool {
+			service.mu.Lock()
+			defer service.mu.Unlock()
+			return len(service.waking) == 0
+		})
+		if world.promptCount("a") != 0 || world.promptCount("b") != 0 {
+			t.Fatal("unresolved mention woke the group")
+		}
+	}
+	if err := service.Post(group.ID, "Hello everyone."); err != nil {
+		t.Fatal(err)
+	}
+	waitUntil(t, func() bool { return world.promptCount("a") == 1 && world.promptCount("b") == 1 })
 }

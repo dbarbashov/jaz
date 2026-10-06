@@ -14,3 +14,17 @@ Verification: all 306 frontend tests, typecheck, lint, web build, full Go tests 
 The isolated side-browser check used three saved messages from the reported conversation, production ChatLog and styles. Tags displayed correctly, survived a page reload and navigated to Business Opportunist's exact bot ID. The destination was a fixture route; no live bot messages were sent or old pings replayed.
 
 Strict review preserved the complete avatar catalogue separately from the group mention scope, reused the existing pill and text-node traversal, and found no provider/runtime-boundary changes. No application release is part of this change.
+
+## Requested Strict Review
+
+- [x] Audit identity stability, routing/rendering agreement and feature ownership.
+- [x] Fix confirmed findings and simplify the implementation.
+- [x] Verify the final revision and review the diff; prepare the review fixes for commit.
+
+The requested review found and fixed three issues:
+
+- The shared Markdown renderer read a bot catalogue through global context and rebuilt its name index per message. ChatLog now builds the name-to-target map once and passes it explicitly; unrelated Markdown uses its original pipeline. Group member filtering is memoized.
+- New name-only messages did not preserve the recipient chosen at send time. Group posting now adds the canonical bot target before persistence and publication, using that same resolution for waking members. A rename/reused-name regression failed before this fix. Existing historical messages remain unchanged and retain the name-based rendering fallback.
+- Markdown entities and escaped punctuation rendered as valid mentions but failed group routing. Resolution now uses the existing Markdown writer's text decoding, including escaped entities and numeric references. The entity/escaped-name routing regressions failed before the fix. Goldmark's existing pinned version is marked as a direct dependency; no version was added or upgraded.
+
+Final verification: 306 frontend tests, typecheck, lint, web build, full Go tests and bot race tests pass. Additional coverage protects unresolved user mentions from broadcasting while preserving ordinary user broadcasts. The browser's rendered controls and click navigation still resolve the saved messages to the correct bot ID. Screenshot capture timed out during this review; the earlier visual inspection remains the styling evidence, and this review changed no styles.

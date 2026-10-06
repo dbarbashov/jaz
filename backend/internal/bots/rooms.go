@@ -40,12 +40,14 @@ func (s *Service) Post(groupID, text string) error {
 // member when the user or an outsider wrote it, and nobody when a member did:
 // bots follow up on each other only when addressed.
 func (s *Service) post(group storage.BotRecord, name string, message sessionevents.RoomMessageEvent) error {
+	text, mentioned := s.resolveMentions(message.Text, group.Members)
+	message.Text = text
 	if err := s.appendEvent(sessionevents.Event{SessionID: group.ThreadID, Type: sessionevents.TypeRoomMessage, RoomMessage: &message, At: time.Now().UTC()}); err != nil {
 		return err
 	}
 	fromMember := slices.Contains(group.Members, message.BotID)
 	wake := group.Members
-	if mentioned := s.mentions(message.Text, group.Members); mentioned != nil {
+	if mentioned != nil {
 		wake = mentioned
 	} else if fromMember {
 		wake = nil

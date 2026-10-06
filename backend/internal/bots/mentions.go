@@ -1,12 +1,16 @@
 package bots
 
 import (
+	"bufio"
+	"fmt"
+	"html"
 	"regexp"
 	"slices"
 	"strings"
 
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/ast"
+	htmlrenderer "github.com/yuin/goldmark/renderer/html"
 	"github.com/yuin/goldmark/text"
 )
 
@@ -14,7 +18,7 @@ var namedMention = regexp.MustCompile(`\[@([^\[\]\r\n]+)\]`)
 
 // An unresolved mention returns an empty slice, so a user's ambiguous tag
 // does not fall back to waking the entire group.
-func (s *Service) mentions(message string, members []string) []string {
+func (s *Service) resolveMentions(message string, members []string) (string, []string) {
 	names := make(map[string]string, len(members))
 	for _, id := range members {
 		name := s.name(id)
@@ -34,6 +38,8 @@ func (s *Service) mentions(message string, members []string) []string {
 		}
 	}
 	source := []byte(message)
+	var linked strings.Builder
+	written := 0
 	tree := goldmark.DefaultParser().Parse(text.NewReader(source))
 	_ = ast.Walk(tree, func(node ast.Node, entering bool) (ast.WalkStatus, error) {
 		if !entering {
@@ -59,11 +65,31 @@ func (s *Service) mentions(message string, members []string) []string {
 				}
 				end = run.Segment.Stop
 			}
-			for _, match := range namedMention.FindAllSubmatch(source[node.Segment.Start:end], -1) {
-				add(names[string(match[1])])
+			start := node.Segment.Start
+			for _, match := range namedMention.FindAllSubmatchIndex(source[start:end], -1) {
+				id := names[mentionName(source[start+match[2]:start+match[3]])]
+				add(id)
+				if id != "" {
+					stop := start + match[1]
+					linked.Write(source[written:stop])
+					fmt.Fprintf(&linked, "(bot:%s)", id)
+					written = stop
+				}
 			}
 		}
 		return ast.WalkContinue, nil
 	})
-	return ids
+	if written == 0 {
+		return message, ids
+	}
+	linked.Write(source[written:])
+	return linked.String(), ids
+}
+
+func mentionName(raw []byte) string {
+	var escaped strings.Builder
+	writer := bufio.NewWriter(&escaped)
+	htmlrenderer.DefaultWriter.Write(writer, raw)
+	_ = writer.Flush()
+	return html.UnescapeString(escaped.String())
 }

@@ -22,6 +22,7 @@ require (
 	github.com/rivo/uniseg v0.4.7
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/spf13/viper v1.21.0
+	github.com/yuin/goldmark v1.8.2
 	github.com/zalando/go-keyring v0.2.8
 	go.mau.fi/whatsmeow v0.0.0-20260929112325-8b41cfe6d9c4
 	go.uber.org/fx v1.24.0
@@ -99,7 +100,6 @@ require (
 	github.com/vektah/gqlparser/v2 v2.5.27 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
 	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
-	github.com/yuin/goldmark v1.8.2 // indirect
 	go.mau.fi/libsignal v0.2.2 // indirect
 	go.mau.fi/util v0.10.1 // indirect
 	go.opentelemetry.io/otel v1.44.0 // indirect

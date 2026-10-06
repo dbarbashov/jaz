@@ -44,6 +44,9 @@ const bots = [
   { id: 'd', name: 'Shared name' },
   { id: 'e', name: 'Shared name' },
   { id: 'outside', name: 'Business Opportunist' },
+  { id: 'f', name: 'R&D', avatar: { shape: 'circle', color: 'green' } },
+  { id: 'g', name: 'Research_Lab', avatar: { shape: 'circle', color: 'blue' } },
+  { id: 'h', name: 'R&amp;D', avatar: { shape: 'circle', color: 'orange' } },
 ]
 const { botsQuery } = await import('@/lib/api/bots')
 client.setQueryData(botsQuery.queryKey, bots)
@@ -54,6 +57,8 @@ const messages = [
   '`[@Business Opportunist]` and `[@Business Opportunist](bot:b)`',
   '```text\n[@Business Opportunist](bot:b)\n```',
   '[@Business Opportunist](https://example.com)',
+  '[@R&amp;D] and [@Research\\_Lab]',
+  '[@R&amp;D](bot:f) and [@Research\\_Lab](bot:g) and [@R\\&amp;D]',
 ]
 const events = messages.map((text, index) => ({
   seq: index + 1,
