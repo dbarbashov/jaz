@@ -2,11 +2,12 @@ import { useQuery } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { ArrowRight, Sparkles } from 'lucide-react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from 'react'
+import { createContext, useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
 import { AgentAvatar } from '@/components/acp/AgentAvatar'
 import { BotIcon } from '@/components/bots/BotAvatar'
 import { botsQuery } from '@/lib/api/bots'
+import type { Bot } from '@/lib/api/types'
 import { botAvatars, botIdFromTarget } from '@/lib/bots'
 import { layoutRect, layoutViewport } from '@/lib/dom/zoom'
 import { sessionQuery } from '@/lib/api/sessions'
@@ -17,6 +18,8 @@ const PILL_CLASS = 'rounded-[4px] bg-primary-soft px-1 py-px text-primary-strong
 const THREAD_PILL_CLASS =
   'inline-flex max-w-full cursor-pointer items-center gap-1 rounded-[5px] bg-primary-soft px-1.5 py-px align-baseline text-primary-strong transition-colors hover:bg-primary/20'
 const SESSION_ID_RE = /^\d{8}T\d{6}-[a-f0-9]{8}$/i
+
+export const BotMentionContext = createContext<Bot[]>([])
 
 export function MentionPill({ mention }: { mention: Mention }) {
   if (mention.sigil === '$') return <SkillMentionPill mention={mention} />

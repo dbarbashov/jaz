@@ -88,7 +88,13 @@ export function GroupChat({ group, bots }: { group: Bot; bots: Bot[] }) {
             ) : history.data && !entries.length ? (
               <EmptyState title="Say something to the group" />
             ) : (
-              <ChatLog entries={entries} bots={bots} named working={working.map((bot) => ({ bot }))} />
+              <ChatLog
+                entries={entries}
+                bots={bots}
+                mentionBots={bots.filter((bot) => group.members?.includes(bot.id))}
+                named
+                working={working.map((bot) => ({ bot }))}
+              />
             )}
           </div>
         </div>

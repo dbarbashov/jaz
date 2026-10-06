@@ -1,5 +1,5 @@
 import { expect, mock, test } from 'bun:test'
-import { createElement } from 'react'
+import { createContext, createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
@@ -18,6 +18,7 @@ mock.module('@/lib/api/skills', () => ({
   skillsQuery: () => ({ queryKey: ['skills'], queryFn: async () => [] }),
 }))
 mock.module('./mentions', () => ({
+  BotMentionContext: createContext([]),
   MentionPill: ({ mention }) => createElement('span', null, `${mention.sigil}${mention.name}`),
 }))
 mock.module('./CodeBlock', () => ({

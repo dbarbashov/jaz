@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -19,8 +18,6 @@ const (
 	maxFollowUps = 6
 	maxHistory   = 20
 )
-
-var mentionPattern = regexp.MustCompile(`\]\(bot:([A-Za-z0-9_-]+)\)`)
 
 // Post adds the user's message to a group.
 func (s *Service) Post(groupID, text string) error {
@@ -48,7 +45,7 @@ func (s *Service) post(group storage.BotRecord, name string, message sessioneven
 	}
 	fromMember := slices.Contains(group.Members, message.BotID)
 	wake := group.Members
-	if mentioned := mentions(message.Text); len(mentioned) > 0 {
+	if mentioned := s.mentions(message.Text, group.Members); mentioned != nil {
 		wake = mentioned
 	} else if fromMember {
 		wake = nil
@@ -148,12 +145,4 @@ func unseen(events []sessionevents.Event, member string) []sessionevents.RoomMes
 		messages = messages[len(messages)-maxHistory:]
 	}
 	return messages
-}
-
-func mentions(text string) []string {
-	var ids []string
-	for _, match := range mentionPattern.FindAllStringSubmatch(text, -1) {
-		ids = append(ids, match[1])
-	}
-	return ids
 }

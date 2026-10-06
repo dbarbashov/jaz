@@ -21,8 +21,8 @@ import { markdownImageSource } from '@/lib/markdownImages'
 import { findFileReferences, parseFileReference, resolveFileLink, type FileReference } from '@shared/fileReader'
 import { CodeBlock } from './CodeBlock'
 import { encodeMention } from './mentionCodec'
-import { MentionPill } from './mentions'
-import { botIdFromTarget } from '@/lib/bots'
+import { BotMentionContext, MentionPill } from '@/components/session/mentions'
+import { botIdFromTarget, botTarget } from '@/lib/bots'
 
 const PreviewLinkContext = createContext<((url: string) => void) | null>(null)
 const FileReaderLinkContext = createContext<((file: FileReference) => void) | null>(null)
@@ -155,6 +155,27 @@ function remarkLineBreaks() {
   }
 }
 
+function remarkBotMentions(names: Map<string, string>) {
+  return (tree: MarkdownNode) => {
+    rewriteTextNodes(tree, (value) => {
+      const nodes: MarkdownNode[] = []
+      let end = 0
+      for (const match of value.matchAll(/\[@([^[\]\r\n]+)\]/g)) {
+        const id = names.get(match[1])
+        if (!id) continue
+        nodes.push({ type: 'text', value: value.slice(end, match.index) })
+        nodes.push({
+          type: 'link',
+          url: botTarget(id),
+          children: [{ type: 'text', value: '@' + match[1] }],
+        })
+        end = match.index + match[0].length
+      }
+      return nodes.length ? [...nodes, { type: 'text', value: value.slice(end) }] : null
+    })
+  }
+}
+
 // Code, math, HTML and images carry no child nodes. Link labels are left as
 // written, so a file reference inside one never becomes a nested link.
 function rewriteTextNodes(node: MarkdownNode, rewrite: (value: string) => MarkdownNode[] | null): void {
@@ -230,15 +251,23 @@ function BaseMarkdown({
   text: string
   className: string
   Link: AnchorComponent
-  remarkPlugins?: Options['remarkPlugins']
+  remarkPlugins?: NonNullable<Options['remarkPlugins']>
 }) {
   const files = useContext(MarkdownFileContext)
+  const bots = useContext(BotMentionContext)
+  const plugins = useMemo(() => {
+    const names = new Map<string, string>()
+    for (const bot of bots) {
+      names.set(bot.name, names.has(bot.name) ? '' : bot.id)
+    }
+    return [...remarkPlugins, [remarkBotMentions, names]] satisfies Options['remarkPlugins']
+  }, [bots, remarkPlugins])
   const prepared = useMemo(() => normalizeMath(text), [text])
   const components = useMemo<Components>(() => ({ a: Link, img: MarkdownImage, pre: CodeBlock, table: MarkdownTable }), [Link])
   return (
     <div className={className}>
       <Markdown
-        remarkPlugins={remarkPlugins}
+        remarkPlugins={plugins}
         rehypePlugins={[rehypeKatex]}
         components={components}
         urlTransform={(url, key, node) => key === 'src' && node.tagName === 'img'

@@ -3,6 +3,7 @@ import { MessageActions } from '@/components/session/MessageActions'
 import { MessageAttachments } from '@/components/session/MessageAttachments'
 import { PermissionCard } from '@/components/session/TranscriptPermissions'
 import { UserMessageMarkdown } from '@/components/session/MessageMarkdown'
+import { BotMentionContext } from '@/components/session/mentions'
 import { SystemEventRow } from '@/components/session/SystemEventRow'
 import type { Bot, BotAvatar as Avatar } from '@/lib/api/types'
 import { botInk, type BotWork, type ChatEntry } from '@/lib/bots'
@@ -18,12 +19,14 @@ const QUIET_GAP_MS = 30 * 60_000
 export function ChatLog({
   entries,
   bots,
+  mentionBots = bots,
   named,
   working,
   onOpenRoutines,
 }: {
   entries: ChatEntry[]
   bots: Bot[]
+  mentionBots?: Bot[]
   named: boolean
   working: ({ bot: Bot } & BotWork)[]
   // Opens the routines a "Created routine" line names.
@@ -31,70 +34,72 @@ export function ChatLog({
 }) {
   const avatar = (id?: string) => bots.find((bot) => bot.id === id)?.avatar ?? GONE
   return (
-    <div className="@container flex flex-col">
-      {entries.map((entry, index) => {
-        const previous = entries[index - 1]
-        const next = entries[index + 1]
-        const stamped = !previous || Date.parse(entry.at) - Date.parse(previous.at) > QUIET_GAP_MS
-        const nextStamped = !next || Date.parse(next.at) - Date.parse(entry.at) > QUIET_GAP_MS
-        const sameSpeaker = (other?: ChatEntry) =>
-          other?.kind === entry.kind && (entry.kind !== 'bot' || (other.kind === 'bot' && other.botId === entry.botId))
-        const opensRun = stamped || !sameSpeaker(previous)
-        const closesRun = nextStamped || !sameSpeaker(next)
-        return (
-          <div key={entry.key} className={opensRun ? 'mt-4 first:mt-0' : 'mt-1'}>
-            {stamped ? <p className="pb-3 text-center text-[12px] text-ink-3">{messageTime(entry.at)}</p> : null}
-            {entry.kind === 'user' ? (
-              <>
-                <div className="flex flex-col items-end">
-                  <MessageAttachments
-                    attachments={entry.attachments ?? []}
-                    attachmentSessionId={entry.attachmentSessionId}
-                  />
-                </div>
-                {entry.text ? <ChatBubble text={entry.text} at={entry.at} mine /> : null}
-              </>
-            ) : entry.kind === 'activity' ? (
-              <SystemEventRow event={entry.event} onOpen={entry.event.loop_created ? onOpenRoutines : undefined} />
-            ) : entry.kind === 'app' ? (
-              <MCPAppFrame app={entry.app} call={entry.app} active />
-            ) : entry.kind === 'question' ? (
-              <PermissionCard event={entry.event} resolution={entry.answer} />
-            ) : (
-              <div className="flex items-end gap-2.5">
-                {named ? (
-                  <span className="w-7 shrink-0">{closesRun ? <BotAvatar avatar={avatar(entry.botId)} size={28} /> : null}</span>
-                ) : null}
-                <div className="flex min-w-0 flex-1 flex-col gap-1">
-                  {named && opensRun ? (
-                    <span
-                      className="px-1 text-[12px] font-medium"
-                      style={{ color: botInk(avatar(entry.botId).color) }}
-                    >
-                      {entry.name}
-                    </span>
+    <BotMentionContext value={mentionBots}>
+      <div className="@container flex flex-col">
+        {entries.map((entry, index) => {
+          const previous = entries[index - 1]
+          const next = entries[index + 1]
+          const stamped = !previous || Date.parse(entry.at) - Date.parse(previous.at) > QUIET_GAP_MS
+          const nextStamped = !next || Date.parse(next.at) - Date.parse(entry.at) > QUIET_GAP_MS
+          const sameSpeaker = (other?: ChatEntry) =>
+            other?.kind === entry.kind && (entry.kind !== 'bot' || (other.kind === 'bot' && other.botId === entry.botId))
+          const opensRun = stamped || !sameSpeaker(previous)
+          const closesRun = nextStamped || !sameSpeaker(next)
+          return (
+            <div key={entry.key} className={opensRun ? 'mt-4 first:mt-0' : 'mt-1'}>
+              {stamped ? <p className="pb-3 text-center text-[12px] text-ink-3">{messageTime(entry.at)}</p> : null}
+              {entry.kind === 'user' ? (
+                <>
+                  <div className="flex flex-col items-end">
+                    <MessageAttachments
+                      attachments={entry.attachments ?? []}
+                      attachmentSessionId={entry.attachmentSessionId}
+                    />
+                  </div>
+                  {entry.text ? <ChatBubble text={entry.text} at={entry.at} mine /> : null}
+                </>
+              ) : entry.kind === 'activity' ? (
+                <SystemEventRow event={entry.event} onOpen={entry.event.loop_created ? onOpenRoutines : undefined} />
+              ) : entry.kind === 'app' ? (
+                <MCPAppFrame app={entry.app} call={entry.app} active />
+              ) : entry.kind === 'question' ? (
+                <PermissionCard event={entry.event} resolution={entry.answer} />
+              ) : (
+                <div className="flex items-end gap-2.5">
+                  {named ? (
+                    <span className="w-7 shrink-0">{closesRun ? <BotAvatar avatar={avatar(entry.botId)} size={28} /> : null}</span>
                   ) : null}
-                  <ChatBubble text={entry.text} at={entry.at} />
+                  <div className="flex min-w-0 flex-1 flex-col gap-1">
+                    {named && opensRun ? (
+                      <span
+                        className="px-1 text-[12px] font-medium"
+                        style={{ color: botInk(avatar(entry.botId).color) }}
+                      >
+                        {entry.name}
+                      </span>
+                    ) : null}
+                    <ChatBubble text={entry.text} at={entry.at} />
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
+          )
+        })}
+        {working.map(({ bot, doing = 'working', note }) => (
+          <div key={bot.id} role="status" className="mt-4 flex items-start gap-2 text-sm text-ink-3 first:mt-0">
+            <BotAvatar avatar={bot.avatar} size={22} working />
+            <div className="flex min-w-0 flex-col gap-0.5 pt-px">
+              <p>
+                <span className="live-shimmer">
+                  {bot.name} is {doing}…
+                </span>
+              </p>
+              {note ? <p className="truncate text-[12px]">{note}</p> : null}
+            </div>
           </div>
-        )
-      })}
-      {working.map(({ bot, doing = 'working', note }) => (
-        <div key={bot.id} role="status" className="mt-4 flex items-start gap-2 text-sm text-ink-3 first:mt-0">
-          <BotAvatar avatar={bot.avatar} size={22} working />
-          <div className="flex min-w-0 flex-col gap-0.5 pt-px">
-            <p>
-              <span className="live-shimmer">
-                {bot.name} is {doing}…
-              </span>
-            </p>
-            {note ? <p className="truncate text-[12px]">{note}</p> : null}
-          </div>
-        </div>
-      ))}
-    </div>
+        ))}
+      </div>
+    </BotMentionContext>
   )
 }
 

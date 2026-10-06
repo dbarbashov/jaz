@@ -2,6 +2,7 @@ import { mock } from 'bun:test'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { createMemoryHistory, createRootRoute, createRouter, RouterProvider } from '@tanstack/react-router'
 
 mock.module('@/lib/theme', () => ({ useTheme: () => ({ resolved: 'light' }) }))
 mock.module('@/components/ui/Modal', () => ({ Modal: () => null }))
@@ -37,5 +38,43 @@ const html = ['', 'Read these'].map((text) => {
     createElement(ChatLog, { entries, bots: [], named: false, working: [] }),
   ))
 })
+const bots = [
+  { id: 'b', name: 'Business Opportunist', avatar: { shape: 'circle', color: 'purple' } },
+  { id: 'c', name: 'Planner', avatar: { shape: 'blob', color: 'blue' } },
+  { id: 'd', name: 'Shared name' },
+  { id: 'e', name: 'Shared name' },
+  { id: 'outside', name: 'Business Opportunist' },
+]
+const { botsQuery } = await import('@/lib/api/bots')
+client.setQueryData(botsQuery.queryKey, bots)
+const messages = [
+  '[@Business Opportunist] Please check this.',
+  '[@Business Opportunist](bot:c) Explicit ID wins.',
+  '[@Shared name] [@Missing] remain text.',
+  '`[@Business Opportunist]` and `[@Business Opportunist](bot:b)`',
+  '```text\n[@Business Opportunist](bot:b)\n```',
+  '[@Business Opportunist](https://example.com)',
+]
+const events = messages.map((text, index) => ({
+  seq: index + 1,
+  type: 'room_message',
+  at: '2026-10-06T09:00:00Z',
+  room_message: { speaker: 'bot', bot_id: 'a', name: 'Researcher', text },
+}))
+const entries = botChat([], events, self, false, []).entries
+const rootRoute = createRootRoute({
+  component: () => createElement(ChatLog, {
+    entries, bots, mentionBots: bots.filter((bot) => bot.id !== 'outside'), named: false, working: [],
+  }),
+})
+const router = createRouter({
+  routeTree: rootRoute,
+  history: createMemoryHistory({ initialEntries: ['/'] }),
+  isServer: true,
+})
+await router.load()
+const mentions = renderToStaticMarkup(createElement(QueryClientProvider, { client },
+  createElement(RouterProvider, { router }),
+))
 client.clear()
-globalThis.postMessage(html)
+globalThis.postMessage({ attachments: html, mentions })

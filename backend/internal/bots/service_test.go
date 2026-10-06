@@ -322,7 +322,7 @@ func TestMembersFollowUpOnlyWhenMentioned(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	world.replies["b"] = []string{"[@Research](bot:a) can you check the numbers?"}
+	world.replies["b"] = []string{"[@Research] can you check the numbers?"}
 	world.replies["a"] = []string{"Checked."}
 
 	if err := service.Post(group.ID, "[@Marketing](bot:b) where is the launch draft?"); err != nil {

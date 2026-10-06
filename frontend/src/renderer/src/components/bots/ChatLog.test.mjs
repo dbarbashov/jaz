@@ -1,18 +1,25 @@
 import { expect, test } from 'bun:test'
 
-test('bot chat renders pasted text and image attachments, including attachment-only messages', async () => {
+test('bot chat renders saved attachments and resolves bot mentions without linking code or ambiguous names', async () => {
   const worker = new globalThis.Worker(new globalThis.URL('./ChatLog.worker.mjs', import.meta.url).href)
   try {
     const result = await new Promise((resolve, reject) => {
       worker.onmessage = (event) => resolve(event.data)
       worker.onerror = reject
     })
-    for (const html of result) {
+    for (const html of result.attachments) {
       expect(html).toContain('pasted-text-1.txt')
       expect(html).toContain('alt="screenshot.png"')
       expect(html).toContain('/v1/sessions/bot-1/attachments/image-1')
     }
-    expect(result[1]).toContain('Read these')
+    expect(result.attachments[1]).toContain('Read these')
+    expect(result.mentions).toContain('href="/bots/b"')
+    expect(result.mentions).toContain('href="/bots/c"')
+    expect(result.mentions).toContain('title="Planner"')
+    expect(result.mentions.match(/href="\/bots\//g)).toHaveLength(2)
+    expect(result.mentions).toContain('[@Shared name] [@Missing] remain text.')
+    expect(result.mentions).toContain('<code>[@Business Opportunist]</code>')
+    expect(result.mentions).toContain('<code>[@Business Opportunist](bot:b)</code>')
   } finally {
     worker.terminate()
   }
