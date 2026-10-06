@@ -3,12 +3,39 @@ package acp
 import (
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/wins/jaz/backend/internal/modelcatalog"
 )
 
 const codexModelMetadataEnv = "JAZ_CODEX_MODEL_METADATA"
+
+func codexFastModeModels(cfg AgentConfig, root string) []string {
+	auth := resolveCodexAuth(cfg.Auth, cfg, root, nil, nil)
+	raw, err := os.ReadFile(filepath.Join(auth.Config.Path, "models_cache.json"))
+	if err != nil {
+		return nil
+	}
+	var cache struct {
+		Models []struct {
+			Slug                 string   `json:"slug"`
+			AdditionalSpeedTiers []string `json:"additional_speed_tiers"`
+		} `json:"models"`
+	}
+	if json.Unmarshal(raw, &cache) != nil {
+		return nil
+	}
+	var models []string
+	for _, model := range cache.Models {
+		if model.Slug != "" && slices.Contains(model.AdditionalSpeedTiers, "fast") {
+			models = append(models, model.Slug)
+		}
+	}
+	return models
+}
 
 type codexModelMetadata struct {
 	ID                     string   `json:"id"`
