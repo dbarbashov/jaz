@@ -62,9 +62,7 @@ func TestGroupMentionRouting(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			waitUntil(t, func() bool {
-				return turnsInFlight(service) == 0
-			})
+			world.settle(t)
 			for _, id := range record.Members {
 				want := 0
 				if slices.Contains(tc.want, id) {
@@ -121,9 +119,7 @@ func TestUnresolvedUserMentionDoesNotBroadcast(t *testing.T) {
 		if err := service.Post(group.ID, message); err != nil {
 			t.Fatal(err)
 		}
-		waitUntil(t, func() bool {
-			return turnsInFlight(service) == 0
-		})
+		world.settle(t)
 		if world.promptCount(first) != 0 || world.promptCount(second) != 0 {
 			t.Fatal("unresolved mention woke the group")
 		}

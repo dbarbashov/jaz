@@ -28,22 +28,22 @@ type Service struct {
 
 	mu        sync.Mutex
 	followUps map[string]int
-	// members schedules each bot's turns in each group it belongs to, keyed by
-	// group and bot.
-	members map[string]*memberTurns
+	// delivering serialises deliveries to each bot in each group it belongs
+	// to, keyed by group and bot.
+	delivering map[string]*sync.Mutex
 }
 
 func NewService(store Store, homes string, threads Threads, queue TurnQueue, routines Routines, events Publisher, logger *log.Logger) *Service {
 	return &Service{
-		store:     store,
-		homes:     homes,
-		threads:   threads,
-		queue:     queue,
-		routines:  routines,
-		events:    events,
-		log:       logger.WithPrefix("bots"),
-		followUps: map[string]int{},
-		members:   map[string]*memberTurns{},
+		store:      store,
+		homes:      homes,
+		threads:    threads,
+		queue:      queue,
+		routines:   routines,
+		events:     events,
+		log:        logger.WithPrefix("bots"),
+		followUps:  map[string]int{},
+		delivering: map[string]*sync.Mutex{},
 	}
 }
 
