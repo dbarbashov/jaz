@@ -76,6 +76,93 @@ func TestManagerInputStartsAndNativelySteersWithoutQueueing(t *testing.T) {
 	}
 }
 
+func TestManagerSteerInternalReachesTheTurnWithoutAUserMessage(t *testing.T) {
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	requestLog := filepath.Join(t.TempDir(), "requests.jsonl")
+	manager := newFakeAgentManager(t, store, t.TempDir(), map[string]string{
+		"JAZ_FAKE_ACP_NATIVE_STEERING": "1",
+		"JAZ_FAKE_ACP_REQUEST_LOG":     requestLog,
+	})
+	t.Cleanup(manager.Close)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	spawned, err := manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: "fake", Slug: "fake-internal-steer"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _, _ = manager.Cancel(context.Background(), spawned.SessionID) }()
+
+	if _, err := manager.StartInternalTurn(ctx, acp.InternalTurnRequest{Session: spawned.SessionID, Message: "block until cancelled"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.SteerInternal(ctx, spawned.SessionID, "Research: second finding"); err != nil {
+		t.Fatal(err)
+	}
+	job, err := manager.Wait(ctx, acp.WaitRequest{Session: spawned.SessionID, Timeout: 10 * time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if job.State != acp.StateIdle || job.Assistant != "hello from native steer" {
+		t.Fatalf("internal steer state=%s stop=%q assistant=%q error=%q", job.State, job.StopReason, job.Assistant, job.Error)
+	}
+	requests, err := os.ReadFile(requestLog)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(requests), `"method":"_session/steering"`) || !strings.Contains(string(requests), "Research: second finding") {
+		t.Fatalf("internal steer requests = %s", requests)
+	}
+	messages, err := store.LoadMessages(spawned.SessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(messages) != 0 {
+		t.Fatalf("hidden turn and steer left messages %#v", messages)
+	}
+}
+
+func TestManagerSteerInternalLeavesAPendingQuestionToTheUser(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := newFakeAgentManager(t, store, t.TempDir(), map[string]string{
+		"JAZ_FAKE_ACP_PROMPT_QUEUEING":   "1",
+		"JAZ_FAKE_ACP_STRICT_ELICIT_HOL": "1",
+	})
+	manager.Events = sessionevents.New()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	spawned, err := manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: "fake", Slug: "fake-internal-question"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _, _ = manager.Cancel(context.Background(), spawned.SessionID) }()
+
+	sub := manager.Events.Subscribe(ctx, spawned.SessionID)
+	if _, err := manager.StartInternalTurn(ctx, acp.InternalTurnRequest{Session: spawned.SessionID, Message: "ask then block"}); err != nil {
+		t.Fatal(err)
+	}
+	waitForSteerEventType(t, sub, "permission_request")
+
+	if _, err := manager.SteerInternal(ctx, spawned.SessionID, "Research: second finding"); err == nil {
+		t.Fatal("a hidden message was handed to a turn waiting on the user")
+	}
+	job, err := manager.Status(spawned.SessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(job.Permissions) != 1 || job.State != acp.StateRunning {
+		t.Fatalf("question after a hidden message: state=%s permissions=%+v", job.State, job.Permissions)
+	}
+}
+
 func TestManagerSteerCancelsPendingQuestion(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {

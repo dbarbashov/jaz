@@ -80,9 +80,23 @@ func replyPrompt(from, text string) string {
 func groupTurnPrompt(group, self string, peers []string, messages []sessionevents.RoomMessageEvent) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "[group chat %q] You are %s. Also here: %s and the user.\n\nNew messages since you last spoke:\n", group, self, strings.Join(peers, ", "))
-	for _, message := range messages {
-		fmt.Fprintf(&b, "%s: %s\n", message.Name, message.Text)
-	}
+	writeMessages(&b, messages)
 	b.WriteString("\nPost to the group with send_message, short and only when you add something new. If you have nothing to add, send nothing. Your post wakes only the members you mention, so mention one when you want their answer.")
 	return b.String()
+}
+
+// groupUpdatePrompt hands a member taking its turn in a group the posts that
+// arrived while it works.
+func groupUpdatePrompt(group string, messages []sessionevents.RoomMessageEvent) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "[group chat %q] New messages while you work:\n", group)
+	writeMessages(&b, messages)
+	b.WriteString("\nWork them into what you are doing. Post with send_message only when you add something new.")
+	return b.String()
+}
+
+func writeMessages(b *strings.Builder, messages []sessionevents.RoomMessageEvent) {
+	for _, message := range messages {
+		fmt.Fprintf(b, "%s: %s\n", message.Name, message.Text)
+	}
 }

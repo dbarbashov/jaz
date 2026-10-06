@@ -52,7 +52,7 @@ func TestGroupMentionRouting(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			err = service.post(record, group.Name, sessionevents.RoomMessageEvent{
+			err = service.post(record, sessionevents.RoomMessageEvent{
 				Speaker: "bot", BotID: "a", Name: "Researcher", Text: tc.text,
 			})
 			if err != nil {

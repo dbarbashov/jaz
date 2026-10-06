@@ -26,6 +26,11 @@ type voice struct {
 	said  []string
 }
 
+// in reports whether the turn is one in group.
+func (v *voice) in(group string) bool {
+	return v != nil && v.group == group
+}
+
 func (s *Service) AppVisible(threadID string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -52,7 +57,7 @@ func (s *Service) Message(fromThread, ref, text string) error {
 	sender := s.name(fromThread)
 	if target.Kind == KindGroup {
 		speaker := sessionevents.RoomMessageEvent{Speaker: "bot", BotID: fromThread, Name: sender, Text: text}
-		return s.post(target, session.Title, speaker)
+		return s.post(target, speaker)
 	}
 	if to == fromThread {
 		return errors.New("a bot cannot message itself")
@@ -86,11 +91,11 @@ func (s *Service) Say(threadID, text string) error {
 	case turn.group == "":
 		return nil
 	}
-	group, groupSession, err := s.load(turn.group)
+	group, _, err := s.load(turn.group)
 	if err != nil {
 		return err
 	}
-	return s.post(group, groupSession.Title, message)
+	return s.post(group, message)
 }
 
 func (s *Service) deliver(fromThread, sender, to, recipient, text string) {
@@ -136,6 +141,9 @@ func (s *Service) ask(ctx context.Context, threadID, group, prompt string, activ
 	s.mu.Unlock()
 	defer s.endTurn(threadID, turn)
 	s.announce(threadID, activity)
+	if group != "" {
+		go s.relay(group, threadID)
+	}
 	done, err := s.finish(ctx, threadID, job.ID)
 	if err != nil {
 		return nil, err

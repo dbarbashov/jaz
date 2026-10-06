@@ -31,6 +31,12 @@ type Service struct {
 	// waking holds a member's group turns in flight, keyed by group and
 	// member, and whether another turn is owed after the current one.
 	waking map[string]bool
+	// seen holds, by group and member, the seq of the last group message
+	// shown to the member.
+	seen map[string]int64
+	// relaying serialises handing group messages to members, so none is
+	// shown twice.
+	relaying sync.Mutex
 }
 
 func NewService(store Store, homes string, threads Threads, routines Routines, events Publisher, logger *log.Logger) *Service {
@@ -44,6 +50,7 @@ func NewService(store Store, homes string, threads Threads, routines Routines, e
 		voices:    map[string]*voice{},
 		followUps: map[string]int{},
 		waking:    map[string]bool{},
+		seen:      map[string]int64{},
 	}
 }
 
