@@ -12,7 +12,11 @@ import (
 type Querier interface {
 	AddUsage(ctx context.Context, arg AddUsageParams) error
 	AdvanceTranscriptRevision(ctx context.Context, id string) error
+	AppendQueuedTurn(ctx context.Context, arg AppendQueuedTurnParams) (int64, error)
+	AppendTurnReply(ctx context.Context, arg AppendTurnReplyParams) (int64, error)
+	ClaimQueuedTurn(ctx context.Context, arg ClaimQueuedTurnParams) error
 	CompleteSession(ctx context.Context, arg CompleteSessionParams) error
+	FinishSessionTurn(ctx context.Context, arg FinishSessionTurnParams) (int64, error)
 	GetSession(ctx context.Context, ref string) (Thread, error)
 	GetThreadIDByID(ctx context.Context, id string) (string, error)
 	GetThreadIDBySlug(ctx context.Context, slug string) (string, error)
@@ -32,6 +36,7 @@ type Querier interface {
 	SetPinned(ctx context.Context, arg SetPinnedParams) error
 	SetThreadError(ctx context.Context, arg SetThreadErrorParams) error
 	SetThreadUnread(ctx context.Context, arg SetThreadUnreadParams) error
+	SetTurnIntent(ctx context.Context, arg SetTurnIntentParams) (int64, error)
 	StartSessionTurn(ctx context.Context, arg StartSessionTurnParams) error
 	TouchSessionAttention(ctx context.Context, arg TouchSessionAttentionParams) error
 	TouchThread(ctx context.Context, arg TouchThreadParams) error

@@ -307,6 +307,24 @@ func TestSpawnConfigRejectsModelSpecificUnsupportedReasoning(t *testing.T) {
 	}
 }
 
+func TestBotAndGroupThreadsGetTheBotTools(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	fake := AgentConfig{Command: "fake"}
+	manager := NewManager(store, Config{Root: t.TempDir(), Workspace: t.TempDir(), Agents: map[string]AgentConfig{"fake": fake}}, log.New(io.Discard))
+	for sourceType, want := range map[string]string{storage.SourceBot: MCPServerPolicyBot, storage.SourceBotMember: MCPServerPolicyBot, "": ""} {
+		session, err := manager.CreateSession(t.Context(), SpawnRequest{ACPAgent: "fake", Slug: "thread " + sourceType, Home: t.TempDir(), SourceType: sourceType})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := session.RuntimeRef.MCPServerPolicy; got != want {
+			t.Errorf("%q thread runs with MCP policy %q, want %q", sourceType, got, want)
+		}
+	}
+}
+
 func TestThreadsABotStartsAreItsSubtasks(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {

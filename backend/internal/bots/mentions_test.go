@@ -52,6 +52,10 @@ func TestGroupMentionRouting(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			threads := map[string]string{}
+			for _, id := range record.Members {
+				threads[id] = memberThread(t, service, group.ID, id)
+			}
 			err = service.post(record, sessionevents.RoomMessageEvent{
 				Speaker: "bot", BotID: "a", Name: "Researcher", Text: tc.text,
 			})
@@ -66,7 +70,7 @@ func TestGroupMentionRouting(t *testing.T) {
 				if slices.Contains(tc.want, id) {
 					want = 1
 				}
-				if got := world.promptCount(id); got != want {
+				if got := world.promptCount(threads[id]); got != want {
 					t.Errorf("bot %s got %d turns, want %d", id, got, want)
 				}
 			}
@@ -83,10 +87,11 @@ func TestNamedGroupMentionKeepsItsRecipientAfterRename(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	opportunist := memberThread(t, service, group.ID, "b")
 	if err := service.Post(group.ID, "[@Business Opportunist] Please check this."); err != nil {
 		t.Fatal(err)
 	}
-	waitUntil(t, func() bool { return world.promptCount("b") == 1 })
+	waitUntil(t, func() bool { return world.promptCount(opportunist) == 1 })
 	if err := world.UpdateSessionTitle("b", "Strategy"); err != nil {
 		t.Fatal(err)
 	}
@@ -111,6 +116,7 @@ func TestUnresolvedUserMentionDoesNotBroadcast(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	first, second := memberThread(t, service, group.ID, "a"), memberThread(t, service, group.ID, "b")
 	for _, message := range []string{"[@Research] Check this.", "[@Missing] Check this."} {
 		if err := service.Post(group.ID, message); err != nil {
 			t.Fatal(err)
@@ -118,12 +124,12 @@ func TestUnresolvedUserMentionDoesNotBroadcast(t *testing.T) {
 		waitUntil(t, func() bool {
 			return turnsInFlight(service) == 0
 		})
-		if world.promptCount("a") != 0 || world.promptCount("b") != 0 {
+		if world.promptCount(first) != 0 || world.promptCount(second) != 0 {
 			t.Fatal("unresolved mention woke the group")
 		}
 	}
 	if err := service.Post(group.ID, "Hello everyone."); err != nil {
 		t.Fatal(err)
 	}
-	waitUntil(t, func() bool { return world.promptCount("a") == 1 && world.promptCount("b") == 1 })
+	waitUntil(t, func() bool { return world.promptCount(first) == 1 && world.promptCount(second) == 1 })
 }

@@ -50,6 +50,7 @@ type Store interface {
 	LoadSession(string) (storage.Session, error)
 	SaveSession(storage.Session) error
 	StartSessionTurn(string, storage.Turn) error
+	SetTurnIntent(id string, goalRequested, parentVisible, notifyParent bool) error
 	UpdateSessionModel(id, model, effort string) error
 	UpdateSessionStatus(id, status, errorMessage string, attentionAt time.Time) error
 	UpdateSessionTitleFromRuntime(id, title string) (storage.Session, bool, error)

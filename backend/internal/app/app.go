@@ -38,7 +38,6 @@ import (
 	"github.com/wins/jaz/backend/internal/skills"
 	"github.com/wins/jaz/backend/internal/storage"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
-	"github.com/wins/jaz/backend/internal/templates/acpcompletion"
 	"github.com/wins/jaz/backend/internal/threads"
 	"github.com/wins/jaz/backend/internal/tools"
 	agentspawn "github.com/wins/jaz/backend/internal/tools/agent/spawn"
@@ -346,7 +345,7 @@ func NewACPConfig(cfg Config, store *sqlitestore.Store, workspace Workspace, pro
 				return nil, nil
 			}
 			return promptBuilder.ForRun(session.SourceID, time.Now().UTC())
-		case storage.SourceBot:
+		case storage.SourceBot, storage.SourceBotMember:
 			return bots.Prompt(store, session)
 		default:
 			return nil, nil
@@ -651,18 +650,14 @@ func NewAgent(cfg Config, modelProvider provider.Provider, registry *tools.Regis
 	}
 }
 
-func ConnectACPCompletion(manager *acp.Manager, parentTurns internalTurnStarter, a *agent.Agent, store *sqlitestore.Store, locks *sessionlock.Locks, events *sessionevents.Bus, prompts *coordinator.Builder, logger *log.Logger) {
+func ConnectACPCompletion(manager *acp.Manager, a *agent.Agent, store *sqlitestore.Store, locks *sessionlock.Locks, events *sessionevents.Bus, prompts *coordinator.Builder, logger *log.Logger) {
 	manager.Events = events
 	manager.Done = func(ctx context.Context, job acp.Job) {
-		completeACP(ctx, parentTurns, a, store, locks, events, prompts, logger.WithPrefix("coordinator"), job)
+		completeACP(ctx, a, store, locks, events, prompts, logger.WithPrefix("coordinator"), job)
 	}
 }
 
-type internalTurnStarter interface {
-	StartInternalTurn(context.Context, string, string) error
-}
-
-func completeACP(ctx context.Context, parentStarter internalTurnStarter, a *agent.Agent, store *sqlitestore.Store, locks *sessionlock.Locks, events *sessionevents.Bus, prompts *coordinator.Builder, logger *log.Logger, job acp.Job) {
+func completeACP(ctx context.Context, a *agent.Agent, store *sqlitestore.Store, locks *sessionlock.Locks, events *sessionevents.Bus, prompts *coordinator.Builder, logger *log.Logger, job acp.Job) {
 	if job.ParentID == "" {
 		return
 	}
@@ -678,10 +673,6 @@ func completeACP(ctx context.Context, parentStarter internalTurnStarter, a *agen
 	}
 	if usesExternalACPAgent(parent) {
 		unlock()
-		if err := parentStarter.StartInternalTurn(ctx, job.ParentID, acpCompletion(job)); err != nil {
-			logger.Error("starting acp parent follow-up failed", "parent", job.ParentID, "child", job.ID, "error", err)
-			setStoredSessionError(store, job.ParentID, err.Error())
-		}
 		return
 	}
 	defer unlock()
@@ -692,7 +683,7 @@ func completeACP(ctx context.Context, parentStarter internalTurnStarter, a *agen
 		return
 	}
 	// Append-only: a full-list save would clobber rows persisted after our load.
-	completion := provider.DeveloperMessage(acpCompletion(job))
+	completion := provider.DeveloperMessage(acp.CompletionPrompt(job))
 	if err := store.AppendMessages(job.ParentID, completion); err != nil {
 		logger.Error("appending completion note failed", "parent", job.ParentID, "error", err)
 		setStoredSessionError(store, job.ParentID, err.Error())
@@ -769,21 +760,6 @@ func setStoredSessionError(store *sqlitestore.Store, sessionID, message string) 
 	session.Status = storage.StatusError
 	session.Error = firstNonEmpty(message, session.Error, "Unknown error.")
 	_ = store.SaveSession(session)
-}
-
-func acpCompletion(job acp.Job) string {
-	prompt, err := acpcompletion.Render(acpcompletion.Data{
-		Slug:      job.Slug,
-		Agent:     job.ACPAgent,
-		State:     job.State,
-		Error:     job.Error,
-		Assistant: job.Assistant,
-	})
-	if err != nil {
-		// Embedded and parse-checked at init; the completion turn must still fire.
-		return fmt.Sprintf("ACP session %s (%s) completed with state %s. Continue from this result and report/update the user with relevant details.", job.Slug, job.ACPAgent, job.State)
-	}
-	return prompt
 }
 
 func usesExternalACPAgent(session storage.Session) bool {

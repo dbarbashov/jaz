@@ -100,3 +100,39 @@ func TestPinBotsReplacesTheOrderAndSurvivesEdits(t *testing.T) {
 		t.Fatalf("pins after an edit = %v", got)
 	}
 }
+
+func TestBotMembershipRoundTrip(t *testing.T) {
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	var ids []string
+	for _, slug := range []string{"group", "bot", "seat"} {
+		thread, err := store.CreateSession(storage.CreateSession{Slug: slug})
+		if err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, thread.ID)
+	}
+	membership := storage.BotMembership{GroupID: ids[0], BotID: ids[1], ThreadID: ids[2]}
+	if err := store.SaveMembership(membership); err != nil {
+		t.Fatal(err)
+	}
+	membership.Seen = 42
+	if err := store.SaveMembership(membership); err != nil {
+		t.Fatal(err)
+	}
+	if loaded, err := store.LoadMembership(ids[0], ids[1]); err != nil || loaded != membership {
+		t.Fatalf("loaded by group and bot = %+v, %v", loaded, err)
+	}
+	if loaded, err := store.LoadMembershipByThread(ids[2]); err != nil || loaded != membership {
+		t.Fatalf("loaded by thread = %+v, %v", loaded, err)
+	}
+	if listed, err := store.ListMemberships(); err != nil || !reflect.DeepEqual(listed, []storage.BotMembership{membership}) {
+		t.Fatalf("listed = %+v, %v", listed, err)
+	}
+	if _, err := store.LoadMembership(ids[0], ids[2]); !errors.Is(err, storage.ErrMembershipNotFound) {
+		t.Fatalf("missing membership = %v", err)
+	}
+}

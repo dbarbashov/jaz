@@ -7,7 +7,133 @@ package threaddb
 
 import (
 	"context"
+	"database/sql"
 )
+
+const appendQueuedTurn = `-- name: AppendQueuedTurn :execrows
+UPDATE threads
+SET queued_messages = json_insert(COALESCE(NULLIF(queued_messages, ''), '[]'), '$[#]', json(?1))
+WHERE id = ?2 AND archived = 0
+`
+
+type AppendQueuedTurnParams struct {
+	Message interface{} `json:"message"`
+	ID      string      `json:"id"`
+}
+
+func (q *Queries) AppendQueuedTurn(ctx context.Context, arg AppendQueuedTurnParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, appendQueuedTurn, arg.Message, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const appendTurnReply = `-- name: AppendTurnReply :execrows
+UPDATE threads
+SET turn = json_set(turn, '$.output.replies', json_insert(COALESCE(json_extract(turn, '$.output.replies'), '[]'), '$[#]', ?1))
+WHERE id = ?2 AND status = 'running'
+  AND json_extract(NULLIF(turn, ''), '$.output.reply_to') IS NOT NULL
+`
+
+type AppendTurnReplyParams struct {
+	Message interface{} `json:"message"`
+	ID      string      `json:"id"`
+}
+
+func (q *Queries) AppendTurnReply(ctx context.Context, arg AppendTurnReplyParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, appendTurnReply, arg.Message, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const claimQueuedTurn = `-- name: ClaimQueuedTurn :exec
+UPDATE threads
+SET status = 'running', error = NULL, turn = ?1,
+    queued_messages = ?2, title = ?3,
+    updated_at_ms = ?4, last_attention_at_ms = ?4
+WHERE id = ?5
+`
+
+type ClaimQueuedTurnParams struct {
+	Turn           string         `json:"turn"`
+	QueuedMessages string         `json:"queued_messages"`
+	Title          sql.NullString `json:"title"`
+	StartedAtMs    int64          `json:"started_at_ms"`
+	ID             string         `json:"id"`
+}
+
+func (q *Queries) ClaimQueuedTurn(ctx context.Context, arg ClaimQueuedTurnParams) error {
+	_, err := q.db.ExecContext(ctx, claimQueuedTurn,
+		arg.Turn,
+		arg.QueuedMessages,
+		arg.Title,
+		arg.StartedAtMs,
+		arg.ID,
+	)
+	return err
+}
+
+const finishSessionTurn = `-- name: FinishSessionTurn :execrows
+UPDATE threads
+SET status = ?1, turn = '', error = ?2,
+    unread = CASE WHEN ?1 = 'idle' THEN 1 ELSE unread END,
+    updated_at_ms = ?3,
+    last_attention_at_ms = ?3,
+    last_completed_at_ms = CASE WHEN ?1 = 'idle' THEN ?3 ELSE last_completed_at_ms END
+WHERE id = ?4 AND turn <> ''
+`
+
+type FinishSessionTurnParams struct {
+	Status       string         `json:"status"`
+	Error        sql.NullString `json:"error"`
+	FinishedAtMs int64          `json:"finished_at_ms"`
+	ID           string         `json:"id"`
+}
+
+func (q *Queries) FinishSessionTurn(ctx context.Context, arg FinishSessionTurnParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, finishSessionTurn,
+		arg.Status,
+		arg.Error,
+		arg.FinishedAtMs,
+		arg.ID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const setTurnIntent = `-- name: SetTurnIntent :execrows
+UPDATE threads
+SET turn = json_set(turn,
+    '$.goal_requested', json(CASE WHEN CAST(?1 AS INTEGER) THEN 'true' ELSE 'false' END),
+    '$.parent_visible', json(CASE WHEN CAST(?2 AS INTEGER) THEN 'true' ELSE 'false' END),
+    '$.notify_parent', json(CASE WHEN CAST(?3 AS INTEGER) THEN 'true' ELSE 'false' END))
+WHERE id = ?4 AND status = 'running' AND turn <> ''
+`
+
+type SetTurnIntentParams struct {
+	GoalRequested int64  `json:"goal_requested"`
+	ParentVisible int64  `json:"parent_visible"`
+	NotifyParent  int64  `json:"notify_parent"`
+	ID            string `json:"id"`
+}
+
+func (q *Queries) SetTurnIntent(ctx context.Context, arg SetTurnIntentParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, setTurnIntent,
+		arg.GoalRequested,
+		arg.ParentVisible,
+		arg.NotifyParent,
+		arg.ID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
 
 const startSessionTurn = `-- name: StartSessionTurn :exec
 UPDATE threads

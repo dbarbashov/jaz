@@ -16,7 +16,7 @@ type Runtime interface {
 }
 
 func Resume(ctx context.Context, store storage.SessionStore, runtime Runtime, locks *sessionlock.Locks, events *sessionevents.Bus, logger *log.Logger) error {
-	sessions, err := store.ListSessions(storage.SessionFilter{Runtime: storage.RuntimeACP, RootOnly: true, Limit: 10})
+	sessions, err := store.ListSessions(storage.SessionFilter{Runtime: storage.RuntimeACP, IncludeChildren: true, IncludeSourced: true})
 	if err != nil {
 		return err
 	}
@@ -24,11 +24,11 @@ func Resume(ctx context.Context, store storage.SessionStore, runtime Runtime, lo
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		if candidate.Status != storage.StatusInterrupted {
+		if candidate.Status != storage.StatusInterrupted || !resumable(candidate.SourceType) {
 			continue
 		}
 		unlock := locks.Lock(candidate.ID)
-		err := resume(ctx, store, runtime, candidate, events)
+		err := resume(ctx, store, runtime, candidate.ID, events)
 		unlock()
 		if err != nil {
 			logger.Error("resume interrupted chat", "session", candidate.ID, "error", err)
@@ -37,12 +37,12 @@ func Resume(ctx context.Context, store storage.SessionStore, runtime Runtime, lo
 	return ctx.Err()
 }
 
-func resume(ctx context.Context, store storage.SessionStore, runtime Runtime, candidate storage.Session, events *sessionevents.Bus) error {
-	session, err := store.LoadSession(candidate.ID)
+func resume(ctx context.Context, store storage.SessionStore, runtime Runtime, id string, events *sessionevents.Bus) error {
+	session, err := store.LoadSession(id)
 	if err != nil {
 		return err
 	}
-	if session.Status != storage.StatusInterrupted || session.Archived || !session.UpdatedAt.Equal(candidate.UpdatedAt) || ctx.Err() != nil {
+	if session.Status != storage.StatusInterrupted || session.Archived || ctx.Err() != nil {
 		return ctx.Err()
 	}
 	startCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
@@ -56,4 +56,14 @@ func resume(ctx context.Context, store storage.SessionStore, runtime Runtime, ca
 	}
 	events.Publish(sessionevents.Event{SessionID: session.ID, Type: sessionevents.TypeSession})
 	return err
+}
+
+// resumable reports whether chats with this source resume after a restart:
+// the user's own chats and the threads bots work in.
+func resumable(sourceType string) bool {
+	switch sourceType {
+	case "", storage.SourceBot, storage.SourceBotWorker, storage.SourceBotMember:
+		return true
+	}
+	return false
 }

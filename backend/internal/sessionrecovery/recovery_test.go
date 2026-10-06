@@ -22,7 +22,7 @@ func (f testRuntime) ResumeInterruptedTurn(ctx context.Context, id string) error
 	return f(ctx, id)
 }
 
-func TestResumeOnlyInterruptedChatsInLatestTen(t *testing.T) {
+func TestResumeInterruptedBotsAndWorkersAlongsideChats(t *testing.T) {
 	store, err := sqlitestore.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -38,6 +38,8 @@ func TestResumeOnlyInterruptedChatsInLatestTen(t *testing.T) {
 		session.Status = storage.StatusInterrupted
 		session.LastAttentionAt = base.Add(time.Duration(i) * time.Minute)
 		switch i {
+		case 4:
+			session.SourceType = storage.SourceBot
 		case 8:
 			session.Status = storage.StatusIdle
 		case 9:
@@ -47,6 +49,7 @@ func TestResumeOnlyInterruptedChatsInLatestTen(t *testing.T) {
 			session.SourceType = storage.SourceLoopRun
 		case 13:
 			session.ParentID = sessions[0].ID
+			session.SourceType = storage.SourceBotWorker
 		case 14:
 			session.Archived = true
 		}
@@ -69,10 +72,55 @@ func TestResumeOnlyInterruptedChatsInLatestTen(t *testing.T) {
 		}
 	}
 	var want []string
-	for _, i := range []int{11, 10, 7, 6, 5, 4, 3, 2} {
+	for _, i := range []int{13, 11, 10, 7, 6, 5, 4, 3, 2, 1, 0} {
 		want = append(want, sessions[i].ID)
 	}
 	if !reflect.DeepEqual(resumed, want) {
+		t.Fatalf("resumed = %v, want %v", resumed, want)
+	}
+}
+
+func TestResumeAParentAfterItsResumedWorkerDrawsItsAttention(t *testing.T) {
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	base := time.Now().UTC().Add(-time.Hour)
+	var parent, worker storage.Session
+	for i, slug := range []string{"bot", "worker"} {
+		session, err := store.CreateSession(storage.CreateSession{Slug: slug})
+		if err != nil {
+			t.Fatal(err)
+		}
+		session.Status = storage.StatusInterrupted
+		session.SourceType = storage.SourceBot
+		session.LastAttentionAt = base.Add(time.Duration(i) * time.Minute)
+		if i == 1 {
+			session.ParentID, session.SourceType = parent.ID, storage.SourceBotWorker
+			worker = session
+		} else {
+			parent = session
+		}
+		if err := store.SaveSession(session); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var resumed []string
+	runtime := testRuntime(func(_ context.Context, id string) error {
+		resumed = append(resumed, id)
+		// A resumed worker's turn draws its parent's attention as it starts.
+		if id == worker.ID {
+			if err := store.TouchSessionAttention(parent.ID); err != nil {
+				return err
+			}
+		}
+		return store.UpdateSessionStatus(id, storage.StatusIdle, "", time.Time{})
+	})
+	if err := Resume(t.Context(), store, runtime, sessionlock.New(), sessionevents.New(), log.New(io.Discard)); err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{worker.ID, parent.ID}; !reflect.DeepEqual(resumed, want) {
 		t.Fatalf("resumed = %v, want %v", resumed, want)
 	}
 }

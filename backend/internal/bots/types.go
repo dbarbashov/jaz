@@ -39,6 +39,8 @@ type Bot struct {
 	Model           string    `json:"model,omitempty"`
 	ReasoningEffort string    `json:"reasoning_effort,omitempty"`
 	Members         []string  `json:"members,omitempty"`
+	// Working lists the members taking a turn in a group.
+	Working []string `json:"working,omitempty"`
 }
 
 type CreateBot struct {
@@ -70,24 +72,34 @@ type Threads interface {
 	SetModel(ctx context.Context, sessionID, model, effort string) error
 }
 
+type TurnQueue interface {
+	QueueInternalTurn(context.Context, string, storage.QueuedMessage) error
+}
+
 // Store keeps bot records and the threads they live in.
 type Store interface {
-	BotLoader
+	PromptStore
 	SaveBot(storage.BotRecord) error
 	ListBots() ([]storage.BotRecord, error)
 	PinBots(ids []string) error
 	CreateSession(storage.CreateSession) (storage.Session, error)
-	LoadSession(string) (storage.Session, error)
+	AppendTurnReply(id, message string) error
 	ListSessions(storage.SessionFilter) ([]storage.Session, error)
 	UpdateSessionTitle(id, title string) error
 	SetArchived(id string, archived bool) error
 	LoadSessionEvents(id string) ([]sessionevents.Event, error)
 	AppendSessionEvents(id string, events ...sessionevents.Event) error
 	LoadLatestSessionEvent(id, eventType string) (sessionevents.Event, bool, error)
+	SaveMembership(storage.BotMembership) error
+	LoadMembership(groupID, botID string) (storage.BotMembership, error)
+	ListMemberships() ([]storage.BotMembership, error)
 }
 
-type BotLoader interface {
+// PromptStore is what a bot's identity prompt is read from.
+type PromptStore interface {
 	LoadBot(threadID string) (storage.BotRecord, error)
+	LoadSession(string) (storage.Session, error)
+	LoadMembershipByThread(threadID string) (storage.BotMembership, error)
 }
 
 // Routines is the loop service seen as a bot's routines.

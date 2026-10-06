@@ -76,6 +76,13 @@ func (m *Manager) AnswerInteractive(ctx context.Context, req InteractiveAnswer) 
 	parentVisible := req.ParentVisible || (req.Session != "" && req.Session == job.ParentID)
 	if parentVisible {
 		job.mu.Lock()
+		if job.turn != nil {
+			if err := m.store.SetTurnIntent(job.ID, job.turn.goalRequested, true, job.turn.completion.propagates() && !job.turn.planRequested); err != nil {
+				job.mu.Unlock()
+				m.permissionMu.Unlock()
+				return err
+			}
+		}
 		job.ParentVisible = true
 		job.mu.Unlock()
 	}
@@ -151,11 +158,6 @@ func (m *Manager) AnswerInteractive(ctx context.Context, req InteractiveAnswer) 
 }
 
 func (m *Manager) steerText(ctx context.Context, job *jobState, text string, req InteractiveAnswer) error {
-	if req.ParentVisible {
-		job.mu.Lock()
-		job.ParentVisible = true
-		job.mu.Unlock()
-	}
 	_, err := m.Steer(ctx, SteerRequest{
 		Session:       job.ID,
 		Message:       text,

@@ -51,6 +51,11 @@ type fakeACPManager struct {
 	cancelRelease  chan struct{}
 }
 
+func (f *fakeACPManager) ResumeInterruptedTurn(ctx context.Context, id string) error {
+	_, err := f.StartInternalTurn(ctx, acp.InternalTurnRequest{Session: id, Message: "Continue from where you left off."})
+	return err
+}
+
 func (f *fakeACPManager) CreateSession(_ context.Context, req acp.SpawnRequest) (storage.Session, error) {
 	f.mu.Lock()
 	f.created = req

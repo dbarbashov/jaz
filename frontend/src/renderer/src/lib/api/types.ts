@@ -717,6 +717,8 @@ export interface Bot {
   model?: string
   reasoning_effort?: string
   members?: string[]
+  // The members taking a turn in a group.
+  working?: string[]
 }
 
 export interface BotActivityEvent {

@@ -16,6 +16,7 @@ type QueuedMessage struct {
 	AttachmentIDs []string          `json:"attachment_ids,omitempty"`
 	PlanRequested bool              `json:"plan_requested,omitempty"`
 	GoalRequested bool              `json:"goal_requested,omitempty"`
+	Output        *TurnOutput       `json:"output,omitempty"`
 }
 
 type QueuedMessageKind string
@@ -97,6 +98,7 @@ func NormalizeQueuedMessage(message QueuedMessage) (QueuedMessage, bool) {
 	message.Action = normalizeQueuedAction(message.Action)
 	message.Text = strings.TrimSpace(message.Text)
 	if message.Action != "" {
+		message.Output = nil
 		message.Kind = QueuedMessageKindPublic
 		message.Contexts = nil
 		message.Quotes = nil
@@ -106,6 +108,9 @@ func NormalizeQueuedMessage(message QueuedMessage) (QueuedMessage, bool) {
 		return message, true
 	}
 	message.Kind = normalizeQueuedMessageKind(message.Kind)
+	if !message.IsInternal() {
+		message.Output = nil
+	}
 	message.Contexts = NormalizeMessageContexts(append(SelectionContexts(message.Quotes), message.Contexts...))
 	message.Quotes = nil
 	message.AttachmentIDs = normalizeNonEmpty(message.AttachmentIDs)

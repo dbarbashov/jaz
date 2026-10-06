@@ -27,7 +27,10 @@ const (
 	SourceBot     = "bot"
 	// SourceBotWorker tags a thread a bot started for background work; its
 	// source id is the bot.
-	SourceBotWorker    = "bot_worker"
+	SourceBotWorker = "bot_worker"
+	// SourceBotMember tags the thread a bot takes its turns in for one group;
+	// its source id is the bot.
+	SourceBotMember    = "bot_member"
 	SourceMemoryDream  = "memory_dream"
 	SourceMemorySearch = "memory_search"
 	SourceMemorySource = "memory_source"
@@ -154,9 +157,24 @@ type Session struct {
 }
 
 type Turn struct {
-	PlanRequested   bool   `json:"plan_requested,omitempty"`
-	GoalRequested   bool   `json:"goal_requested,omitempty"`
-	ActiveOperation string `json:"active_operation,omitempty"`
+	PlanRequested   bool           `json:"plan_requested,omitempty"`
+	GoalRequested   bool           `json:"goal_requested,omitempty"`
+	ActiveOperation string         `json:"active_operation,omitempty"`
+	ParentVisible   bool           `json:"parent_visible,omitempty"`
+	NotifyParent    bool           `json:"notify_parent,omitempty"`
+	AllowSilence    bool           `json:"allow_silence,omitempty"`
+	Output          *TurnOutput    `json:"output,omitempty"`
+	PendingMessage  *QueuedMessage `json:"pending_message,omitempty"`
+}
+
+type TurnOutput struct {
+	ReplyTo string   `json:"reply_to,omitempty"`
+	Replies []string `json:"replies,omitempty"`
+}
+
+type TurnDelivery struct {
+	SessionID string
+	Message   QueuedMessage
 }
 
 type FeedItem struct {

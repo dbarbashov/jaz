@@ -30,6 +30,49 @@ func (q *Queries) GetBot(ctx context.Context, threadID string) (Bot, error) {
 	return i, err
 }
 
+const getMembership = `-- name: GetMembership :one
+SELECT group_id, bot_id, thread_id, seen
+FROM bot_memberships
+WHERE group_id = ?1 AND bot_id = ?2
+LIMIT 1
+`
+
+type GetMembershipParams struct {
+	GroupID string `json:"group_id"`
+	BotID   string `json:"bot_id"`
+}
+
+func (q *Queries) GetMembership(ctx context.Context, arg GetMembershipParams) (BotMembership, error) {
+	row := q.db.QueryRowContext(ctx, getMembership, arg.GroupID, arg.BotID)
+	var i BotMembership
+	err := row.Scan(
+		&i.GroupID,
+		&i.BotID,
+		&i.ThreadID,
+		&i.Seen,
+	)
+	return i, err
+}
+
+const getMembershipByThread = `-- name: GetMembershipByThread :one
+SELECT group_id, bot_id, thread_id, seen
+FROM bot_memberships
+WHERE thread_id = ?1
+LIMIT 1
+`
+
+func (q *Queries) GetMembershipByThread(ctx context.Context, threadID string) (BotMembership, error) {
+	row := q.db.QueryRowContext(ctx, getMembershipByThread, threadID)
+	var i BotMembership
+	err := row.Scan(
+		&i.GroupID,
+		&i.BotID,
+		&i.ThreadID,
+		&i.Seen,
+	)
+	return i, err
+}
+
 const listBots = `-- name: ListBots :many
 SELECT thread_id, kind, shape, color, members, pinned
 FROM bots
@@ -65,6 +108,39 @@ func (q *Queries) ListBots(ctx context.Context) ([]Bot, error) {
 	return items, nil
 }
 
+const listMemberships = `-- name: ListMemberships :many
+SELECT group_id, bot_id, thread_id, seen
+FROM bot_memberships
+`
+
+func (q *Queries) ListMemberships(ctx context.Context) ([]BotMembership, error) {
+	rows, err := q.db.QueryContext(ctx, listMemberships)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []BotMembership{}
+	for rows.Next() {
+		var i BotMembership
+		if err := rows.Scan(
+			&i.GroupID,
+			&i.BotID,
+			&i.ThreadID,
+			&i.Seen,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const pinBot = `-- name: PinBot :exec
 UPDATE bots SET pinned = ?1 WHERE thread_id = ?2
 `
@@ -76,6 +152,31 @@ type PinBotParams struct {
 
 func (q *Queries) PinBot(ctx context.Context, arg PinBotParams) error {
 	_, err := q.db.ExecContext(ctx, pinBot, arg.Pinned, arg.ThreadID)
+	return err
+}
+
+const saveMembership = `-- name: SaveMembership :exec
+INSERT INTO bot_memberships (group_id, bot_id, thread_id, seen)
+VALUES (?1, ?2, ?3, ?4)
+ON CONFLICT(group_id, bot_id) DO UPDATE SET
+  thread_id = excluded.thread_id,
+  seen = excluded.seen
+`
+
+type SaveMembershipParams struct {
+	GroupID  string `json:"group_id"`
+	BotID    string `json:"bot_id"`
+	ThreadID string `json:"thread_id"`
+	Seen     int64  `json:"seen"`
+}
+
+func (q *Queries) SaveMembership(ctx context.Context, arg SaveMembershipParams) error {
+	_, err := q.db.ExecContext(ctx, saveMembership,
+		arg.GroupID,
+		arg.BotID,
+		arg.ThreadID,
+		arg.Seen,
+	)
 	return err
 }
 

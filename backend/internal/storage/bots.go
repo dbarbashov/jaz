@@ -15,3 +15,14 @@ type BotRecord struct {
 	Pinned   int
 	Members  []string
 }
+
+var ErrMembershipNotFound = errors.New("bot membership not found")
+
+// BotMembership is a bot's place in a group: the thread it takes its group
+// turns in, and the seq of the last group message shown to it there.
+type BotMembership struct {
+	GroupID  string
+	BotID    string
+	ThreadID string
+	Seen     int64
+}

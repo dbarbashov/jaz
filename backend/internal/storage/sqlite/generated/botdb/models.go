@@ -12,3 +12,10 @@ type Bot struct {
 	Members  string `json:"members"`
 	Pinned   int64  `json:"pinned"`
 }
+
+type BotMembership struct {
+	GroupID  string `json:"group_id"`
+	BotID    string `json:"bot_id"`
+	ThreadID string `json:"thread_id"`
+	Seen     int64  `json:"seen"`
+}
