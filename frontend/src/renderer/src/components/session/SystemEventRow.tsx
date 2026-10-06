@@ -1,4 +1,4 @@
-import { ArrowDownLeft, ArrowLeftRight, ArrowUpRight, CalendarPlus, Clock3, type LucideIcon, Users } from 'lucide-react'
+import { ArrowDownLeft, ArrowLeftRight, ArrowUpRight, CalendarPlus, CircleAlert, Clock3, type LucideIcon, Users } from 'lucide-react'
 import { agentLabel } from '@/lib/agentLabel'
 import type { BotActivityEvent, SessionEvent } from '@/lib/api/types'
 
@@ -7,6 +7,7 @@ const ACTIVITY: Record<BotActivityEvent['kind'], [LucideIcon, (label: string) =>
   message_sent: [ArrowUpRight, (label) => `Messaged ${label}`],
   message_received: [ArrowDownLeft, (label) => `Message from ${label}`],
   group: [Users, (label) => `In ${label}`],
+  unreachable: [CircleAlert, (label) => `Couldn't reach ${label}`],
 }
 
 // What woke a bot, or what it set up, as one quiet centered line; with `onOpen`

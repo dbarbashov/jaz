@@ -87,38 +87,56 @@ func (m *Manager) validateAgentModelProvider(agent string, cfg AgentConfig) erro
 	return fmt.Errorf("model provider %q does not support %q required by acp agent %q", modelProvider, capability, CanonicalAgentName(agent))
 }
 
-// botSubtask makes a thread a bot starts its subtask: it stays out of the
-// sidebar, starts in the bot's home and, as Codex and Grok sub-agents do, runs
-// on the bot's agent and model unless asked otherwise.
-func (m *Manager) botSubtask(req SpawnRequest) (SpawnRequest, error) {
-	if req.ParentID == "" || req.SourceType != "" {
+// botThread makes a thread work like the bot it serves: a thread the bot
+// starts becomes its subtask, and the thread it takes a group's turns in names
+// it as source. Either starts in the bot's home and, as Codex and Grok
+// sub-agents do, runs on the bot's agent and model unless asked otherwise.
+func (m *Manager) botThread(req SpawnRequest) (SpawnRequest, error) {
+	botID := req.SourceID
+	switch {
+	case req.SourceType == storage.SourceBotMember:
+	case req.ParentID != "" && req.SourceType == "":
+		botID = req.ParentID
+	default:
 		return req, nil
 	}
-	parent, err := m.store.LoadSession(req.ParentID)
+	bot, err := m.store.LoadSession(botID)
 	if errors.Is(err, storage.ErrSessionNotFound) {
 		return req, nil
 	}
 	if err != nil {
 		return req, err
 	}
-	if parent.SourceType != storage.SourceBot || parent.RuntimeRef == nil {
+	if bot.SourceType != storage.SourceBot || bot.RuntimeRef == nil {
 		return req, nil
 	}
-	req.SourceType, req.SourceID = storage.SourceBotWorker, parent.ID
+	if req.SourceType == "" {
+		req.SourceType, req.SourceID = storage.SourceBotWorker, bot.ID
+	}
 	if req.Directory == "" && req.Home == "" && !req.Worktree {
-		req.Directory = parent.RuntimeRef.Cwd
+		req.Directory = bot.RuntimeRef.Cwd
 	}
-	if req.ACPAgent != "" && CanonicalAgentName(req.ACPAgent) != parent.RuntimeRef.Agent {
+	if req.ACPAgent != "" && CanonicalAgentName(req.ACPAgent) != bot.RuntimeRef.Agent {
 		return req, nil
 	}
-	req.ACPAgent = parent.RuntimeRef.Agent
+	req.ACPAgent = bot.RuntimeRef.Agent
 	if req.Model == "" && req.ModelProvider == "" {
-		req.ModelProvider, req.Model = parent.ModelProvider, parent.Model
+		req.ModelProvider, req.Model = requestedModelProvider(bot.RuntimeRef.Agent, bot.ModelProvider), bot.Model
 		if req.ReasoningEffort == "" {
-			req.ReasoningEffort = parent.ReasoningEffort
+			req.ReasoningEffort = bot.ReasoningEffort
 		}
 	}
 	return req, nil
+}
+
+// requestedModelProvider is the provider a spawn request names to reproduce a
+// session's stored one: none when the session stored its agent's own name, as
+// agents without a separate provider do.
+func requestedModelProvider(agent, stored string) string {
+	if strings.EqualFold(strings.TrimSpace(stored), CanonicalAgentName(agent)) {
+		return ""
+	}
+	return stored
 }
 
 func (m *Manager) defaultSpawnAgent() (string, error) {

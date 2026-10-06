@@ -307,21 +307,42 @@ func TestSpawnConfigRejectsModelSpecificUnsupportedReasoning(t *testing.T) {
 	}
 }
 
-func TestBotAndGroupThreadsGetTheBotTools(t *testing.T) {
+func TestABotsWorkersAndGroupThreadsRunLikeTheBot(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
 	fake := AgentConfig{Command: "fake"}
-	manager := NewManager(store, Config{Root: t.TempDir(), Workspace: t.TempDir(), Agents: map[string]AgentConfig{"fake": fake}}, log.New(io.Discard))
-	for sourceType, want := range map[string]string{storage.SourceBot: MCPServerPolicyBot, storage.SourceBotMember: MCPServerPolicyBot, "": ""} {
-		session, err := manager.CreateSession(t.Context(), SpawnRequest{ACPAgent: "fake", Slug: "thread " + sourceType, Home: t.TempDir(), SourceType: sourceType})
+	manager := NewManager(store, Config{
+		Root:         t.TempDir(),
+		Workspace:    t.TempDir(),
+		Agents:       map[string]AgentConfig{AgentClaude: fake},
+		ModelCatalog: modelcatalog.NewService(nil),
+	}, log.New(io.Discard))
+	ctx := t.Context()
+	bot, err := manager.CreateSession(ctx, SpawnRequest{ACPAgent: AgentClaude, Slug: "ceo", ReasoningEffort: "high", Home: t.TempDir(), SourceType: storage.SourceBot})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bot.ModelProvider != AgentClaude {
+		t.Fatalf("bot stored provider %q, want the agent's own name so the case is covered", bot.ModelProvider)
+	}
+	var member storage.Session
+	for _, req := range []SpawnRequest{
+		{ParentID: bot.ID, Slug: "research"},
+		{Slug: "ceo in team", SourceType: storage.SourceBotMember, SourceID: bot.ID},
+	} {
+		thread, err := manager.CreateSession(ctx, req)
 		if err != nil {
-			t.Fatal(err)
+			t.Fatalf("%s thread: %v", req.Slug, err)
 		}
-		if got := session.RuntimeRef.MCPServerPolicy; got != want {
-			t.Errorf("%q thread runs with MCP policy %q, want %q", sourceType, got, want)
+		if thread.RuntimeRef.Agent != AgentClaude || thread.Model != bot.Model || thread.ReasoningEffort != "high" || thread.RuntimeRef.Cwd != bot.RuntimeRef.Cwd || thread.SourceID != bot.ID {
+			t.Fatalf("%s thread = %+v, want it to run like bot %+v", req.Slug, thread, bot)
 		}
+		member = thread
+	}
+	if bot.RuntimeRef.MCPServerPolicy != MCPServerPolicyBot || member.RuntimeRef.MCPServerPolicy != MCPServerPolicyBot {
+		t.Fatalf("bot tools: bot %q, group thread %q", bot.RuntimeRef.MCPServerPolicy, member.RuntimeRef.MCPServerPolicy)
 	}
 }
 
