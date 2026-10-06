@@ -101,7 +101,7 @@ func (s *Service) Say(threadID, text string) error {
 func (s *Service) deliver(fromThread, sender, to, recipient, text string) {
 	ctx, cancel := context.WithTimeout(context.Background(), turnTimeout)
 	defer cancel()
-	said, err := s.ask(ctx, to, "", messagePrompt(sender, text), sessionevents.BotActivityEvent{Kind: "message_received", Label: sender})
+	said, err := s.ask(ctx, to, messagePrompt(sender, text), sessionevents.BotActivityEvent{Kind: "message_received", Label: sender})
 	if err != nil {
 		s.log.Warn("bot message failed", "from", fromThread, "to", to, "error", err)
 		return
@@ -127,23 +127,35 @@ func (s *Service) RunRoutine(ctx context.Context, botID, name, prompt string) (a
 	return s.finish(ctx, botID, job.ID)
 }
 
-// ask runs one hidden turn in a bot's thread once it is free and returns what
-// the bot said in it. The turn keeps its voice until it ends, even when ctx is
-// cancelled first.
-func (s *Service) ask(ctx context.Context, threadID, group, prompt string, activity sessionevents.BotActivityEvent) ([]string, error) {
-	job, err := s.threads.StartInternalTurnWhenIdle(ctx, acp.InternalTurnRequest{Session: threadID, Message: prompt, AllowSilence: true})
+// ask runs one hidden turn in a bot's thread once it is free, answering
+// another bot, and returns what the bot said in it.
+func (s *Service) ask(ctx context.Context, threadID, prompt string, activity sessionevents.BotActivityEvent) ([]string, error) {
+	turn, job, err := s.begin(ctx, threadID, "", prompt, activity)
 	if err != nil {
 		return nil, err
+	}
+	return s.hear(ctx, threadID, turn, job)
+}
+
+// begin starts a hidden turn in a bot's thread once it is free and gives the
+// turn its voice: into group or, with none, back to the bot it answers.
+func (s *Service) begin(ctx context.Context, threadID, group, prompt string, activity sessionevents.BotActivityEvent) (*voice, acp.Job, error) {
+	job, err := s.threads.StartInternalTurnWhenIdle(ctx, acp.InternalTurnRequest{Session: threadID, Message: prompt, AllowSilence: true})
+	if err != nil {
+		return nil, acp.Job{}, err
 	}
 	turn := &voice{group: group}
 	s.mu.Lock()
 	s.voices[threadID] = turn
 	s.mu.Unlock()
-	defer s.endTurn(threadID, turn)
 	s.announce(threadID, activity)
-	if group != "" {
-		go s.relay(group, threadID)
-	}
+	return turn, job, nil
+}
+
+// hear waits for a turn begin started to end and returns what the bot said in
+// it. The turn keeps its voice until it ends, even when ctx is cancelled first.
+func (s *Service) hear(ctx context.Context, threadID string, turn *voice, job acp.Job) ([]string, error) {
+	defer s.endTurn(threadID, turn)
 	done, err := s.finish(ctx, threadID, job.ID)
 	if err != nil {
 		return nil, err

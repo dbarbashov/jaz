@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/storage"
 )
@@ -22,6 +24,18 @@ const (
 	// messages.
 	relayTimeout = time.Minute
 )
+
+// membership is a bot's place in a group.
+type membership struct {
+	// reading lets one caller at a time show the bot group messages, so none
+	// is shown twice. It guards seen, the seq of the last group message shown
+	// to the bot.
+	reading sync.Mutex
+	seen    int64
+	// taking and owed, guarded by Service.mu, say whether the bot has a turn
+	// in flight in the group and whether another is owed after it.
+	taking, owed bool
+}
 
 // Post adds the user's message to a group.
 func (s *Service) Post(groupID, text string) error {
@@ -65,8 +79,11 @@ func (s *Service) post(group storage.BotRecord, message sessionevents.RoomMessag
 		s.followUps[group.ThreadID] = 0
 	}
 	for _, member := range group.Members {
-		working := s.voices[member].in(group.ThreadID)
-		if member == message.BotID || !working && !slices.Contains(wake, member) {
+		if member == message.BotID {
+			continue
+		}
+		place := s.membershipLocked(group.ThreadID, member)
+		if !place.taking && !slices.Contains(wake, member) {
 			continue
 		}
 		if fromMember {
@@ -75,8 +92,8 @@ func (s *Service) post(group storage.BotRecord, message sessionevents.RoomMessag
 			}
 			s.followUps[group.ThreadID]++
 		}
-		if working {
-			go s.relay(group.ThreadID, member)
+		if place.taking {
+			go s.relay(group.ThreadID, member, place)
 		} else {
 			s.wakeLocked(group.ThreadID, member)
 		}
@@ -84,8 +101,15 @@ func (s *Service) post(group storage.BotRecord, message sessionevents.RoomMessag
 	return nil
 }
 
-func turnKey(groupID, member string) string {
-	return groupID + "\x00" + member
+// membershipLocked returns member's place in the group. Callers hold s.mu.
+func (s *Service) membershipLocked(groupID, member string) *membership {
+	key := groupID + "\x00" + member
+	place := s.members[key]
+	if place == nil {
+		place = &membership{}
+		s.members[key] = place
+	}
+	return place
 }
 
 // wakeLocked gives member a turn in the group soon. A member has at most one
@@ -93,29 +117,27 @@ func turnKey(groupID, member string) string {
 // turn, which answers whatever that member has not seen by then, so a burst of
 // posts costs one turn. Callers hold s.mu.
 func (s *Service) wakeLocked(groupID, member string) {
-	key := turnKey(groupID, member)
-	if _, busy := s.waking[key]; busy {
-		s.waking[key] = true
+	place := s.membershipLocked(groupID, member)
+	if place.taking {
+		place.owed = true
 		return
 	}
-	s.waking[key] = false
-	go s.takeTurns(key, groupID, member)
+	place.taking = true
+	go s.takeTurns(groupID, member, place)
 }
 
 // takeTurns runs member's turns in the group until no wake is owed.
-func (s *Service) takeTurns(key, groupID, member string) {
+func (s *Service) takeTurns(groupID, member string, place *membership) {
 	for {
 		s.mu.Lock()
-		s.waking[key] = false
+		place.owed = false
 		s.mu.Unlock()
-		if err := s.memberTurn(groupID, member); err != nil {
+		if err := s.memberTurn(groupID, member, place); err != nil {
 			s.log.Warn("group turn failed", "group", groupID, "member", member, "error", err)
 		}
 		s.mu.Lock()
-		owed := s.waking[key]
-		if !owed {
-			delete(s.waking, key)
-		}
+		owed := place.owed
+		place.taking = owed
 		s.mu.Unlock()
 		if !owed {
 			return
@@ -125,19 +147,29 @@ func (s *Service) takeTurns(key, groupID, member string) {
 
 // memberTurn gives member a turn in the group to answer the messages it has
 // not seen, posting with send_message. With none left, it takes no turn.
-func (s *Service) memberTurn(groupID, member string) error {
+func (s *Service) memberTurn(groupID, member string, place *membership) error {
+	turn, job, err := s.beginMemberTurn(groupID, member, place)
+	if err != nil || turn == nil {
+		return err
+	}
+	_, err = s.hear(context.Background(), member, turn, job)
+	return err
+}
+
+// beginMemberTurn starts member's turn with the messages it has not seen and
+// marks them seen once the turn has started. It reads for the member until
+// then, so posts that arrive while the turn waits to start reach it as soon as
+// it runs.
+func (s *Service) beginMemberTurn(groupID, member string, place *membership) (*voice, acp.Job, error) {
 	record, session, err := s.load(groupID)
 	if err != nil {
-		return err
+		return nil, acp.Job{}, err
 	}
-	s.relaying.Lock()
-	messages, seen, err := s.unseen(groupID, member)
-	if err == nil {
-		s.markSeen(groupID, member, seen)
-	}
-	s.relaying.Unlock()
+	place.reading.Lock()
+	defer place.reading.Unlock()
+	messages, seen, err := s.unseen(groupID, member, place.seen)
 	if err != nil || len(messages) == 0 {
-		return err
+		return nil, acp.Job{}, err
 	}
 	peers := make([]string, 0, len(record.Members))
 	for _, other := range record.Members {
@@ -146,17 +178,20 @@ func (s *Service) memberTurn(groupID, member string) error {
 		}
 	}
 	prompt := groupTurnPrompt(session.Title, s.name(member), peers, messages)
-	_, err = s.ask(context.Background(), member, groupID, prompt, sessionevents.BotActivityEvent{Kind: "group", Label: session.Title})
-	return err
+	turn, job, err := s.begin(context.Background(), member, groupID, prompt, sessionevents.BotActivityEvent{Kind: "group", Label: session.Title})
+	if err == nil {
+		place.seen = seen
+	}
+	return turn, job, err
 }
 
-// relay hands member the group's messages it has not seen while it works on
-// its turn there, so it can work them in before the turn ends. A turn that has
+// relay hands member the group messages it has not seen while it works on its
+// turn there, so it can work them in before the turn ends. A turn that has
 // ended or cannot take them owes the member another turn instead.
-func (s *Service) relay(groupID, member string) {
-	s.relaying.Lock()
-	defer s.relaying.Unlock()
-	err := s.steerUnseen(groupID, member)
+func (s *Service) relay(groupID, member string, place *membership) {
+	place.reading.Lock()
+	defer place.reading.Unlock()
+	err := s.steerUnseen(groupID, member, place)
 	if err == nil {
 		return
 	}
@@ -168,13 +203,13 @@ func (s *Service) relay(groupID, member string) {
 
 // steerUnseen hands the messages member has not seen, if any, to its running
 // turn in the group and marks them seen once the turn has them. Callers hold
-// s.relaying.
-func (s *Service) steerUnseen(groupID, member string) error {
+// place.reading.
+func (s *Service) steerUnseen(groupID, member string, place *membership) error {
 	_, session, err := s.load(groupID)
 	if err != nil {
 		return err
 	}
-	messages, seen, err := s.unseen(groupID, member)
+	messages, seen, err := s.unseen(groupID, member, place.seen)
 	if err != nil || len(messages) == 0 {
 		return err
 	}
@@ -189,27 +224,18 @@ func (s *Service) steerUnseen(groupID, member string) error {
 	if _, err := s.threads.SteerInternal(ctx, member, groupUpdatePrompt(session.Title, messages)); err != nil {
 		return err
 	}
-	s.markSeen(groupID, member, seen)
+	place.seen = seen
 	return nil
 }
 
-func (s *Service) markSeen(groupID, member string, seq int64) {
-	s.mu.Lock()
-	s.seen[turnKey(groupID, member)] = seq
-	s.mu.Unlock()
-}
-
-// unseen returns the group messages member has not been shown, with the seq
-// that marks them seen: those after the last message shown to it or, when Jaz
-// has shown it none since starting, after its own last post.
-func (s *Service) unseen(groupID, member string) ([]sessionevents.RoomMessageEvent, int64, error) {
+// unseen returns the group messages after seq after that member did not post,
+// with the seq that marks them seen. With after zero, as when Jaz has shown
+// member nothing since starting, it returns those after member's own last post.
+func (s *Service) unseen(groupID, member string, after int64) ([]sessionevents.RoomMessageEvent, int64, error) {
 	events, err := s.store.LoadSessionEvents(groupID)
 	if err != nil {
 		return nil, 0, err
 	}
-	s.mu.Lock()
-	after := s.seen[turnKey(groupID, member)]
-	s.mu.Unlock()
 	seen := after
 	var messages []sessionevents.RoomMessageEvent
 	for _, event := range events {
