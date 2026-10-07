@@ -2,7 +2,9 @@ package acp
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"os"
 	"strings"
 
 	modelprovider "github.com/wins/jaz/backend/internal/provider"
@@ -50,10 +52,10 @@ func configureCodexEnv(
 	cfg AgentConfig,
 	providers map[string]modelprovider.ModelProviderConfig,
 	developerInstructions string,
-) error {
+) (func(), error) {
 	config, err := decodeCodexConfig(env["CODEX_CONFIG"])
 	if err != nil {
-		return err
+		return nil, err
 	}
 	config["sandbox_mode"] = "danger-full-access"
 	config["approval_policy"] = "never"
@@ -83,12 +85,21 @@ func configureCodexEnv(
 		}
 	}
 
-	encoded, err := json.Marshal(config)
+	file, err := os.CreateTemp("", "jaz-codex-config-*.json")
 	if err != nil {
-		return fmt.Errorf("encode CODEX_CONFIG: %w", err)
+		return nil, fmt.Errorf("create CODEX_CONFIG: %w", err)
 	}
-	env["CODEX_CONFIG"] = string(encoded)
-	return nil
+	cleanup := func() {
+		_ = os.Remove(file.Name())
+	}
+	writeErr := json.NewEncoder(file).Encode(config)
+	closeErr := file.Close()
+	if err := errors.Join(writeErr, closeErr); err != nil {
+		cleanup()
+		return nil, fmt.Errorf("write CODEX_CONFIG: %w", err)
+	}
+	env["CODEX_CONFIG"] = "@" + file.Name()
+	return cleanup, nil
 }
 
 func codexLaunchProvider(
@@ -117,6 +128,13 @@ func codexLaunchProvider(
 }
 
 func decodeCodexConfig(raw string) (map[string]any, error) {
+	if strings.HasPrefix(raw, "@") {
+		data, err := os.ReadFile(strings.TrimPrefix(raw, "@"))
+		if err != nil {
+			return nil, fmt.Errorf("read CODEX_CONFIG: %w", err)
+		}
+		raw = string(data)
+	}
 	if strings.TrimSpace(raw) == "" {
 		return map[string]any{}, nil
 	}

@@ -127,17 +127,15 @@ func (m *Manager) openConn(ctx context.Context, name string, cfg AgentConfig, en
 	if cfg.Command == "" {
 		return nil, nil, fmt.Errorf("acp agent %q has no command", name)
 	}
-	if CanonicalAgentName(name) == AgentCodex {
-		if err := configureCodexEnv(env, cfg, m.providers(), systemPrompt); err != nil {
-			return nil, nil, err
-		}
-	}
 	cleanup := func() {}
-	if CanonicalAgentName(name) == AgentMuse {
+	switch CanonicalAgentName(name) {
+	case AgentCodex:
+		cleanup, err = configureCodexEnv(env, cfg, m.providers(), systemPrompt)
+	case AgentMuse:
 		cleanup, err = configureMusePrompt(env, systemPrompt)
-		if err != nil {
-			return nil, nil, err
-		}
+	}
+	if err != nil {
+		return nil, nil, err
 	}
 	defer func() {
 		if err != nil {

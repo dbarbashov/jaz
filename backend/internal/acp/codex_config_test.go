@@ -1,7 +1,6 @@
 package acp
 
 import (
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -31,11 +30,13 @@ func TestConfigureCodexEnv(t *testing.T) {
 		},
 	}
 
-	if err := configureCodexEnv(env, cfg, providers, "Jaz instructions"); err != nil {
+	cleanup, err := configureCodexEnv(env, cfg, providers, "Jaz instructions")
+	if err != nil {
 		t.Fatal(err)
 	}
-	var config map[string]any
-	if err := json.Unmarshal([]byte(env["CODEX_CONFIG"]), &config); err != nil {
+	t.Cleanup(cleanup)
+	config, err := decodeCodexConfig(env["CODEX_CONFIG"])
+	if err != nil {
 		t.Fatal(err)
 	}
 	if config["developer_instructions"] != "Jaz instructions" ||
@@ -65,14 +66,16 @@ func TestConfigureCodexEnv(t *testing.T) {
 
 func TestConfigureCodexEnvKeepsOpenAIAccountAuthNative(t *testing.T) {
 	env := map[string]string{"CODEX_CONFIG": "null"}
-	if err := configureCodexEnv(env, AgentConfig{
+	cleanup, err := configureCodexEnv(env, AgentConfig{
 		ModelProvider: modelprovider.ProviderOpenAI,
 		Model:         modelprovider.OpenAIModelGPT6Sol,
-	}, nil, "instructions"); err != nil {
+	}, nil, "instructions")
+	if err != nil {
 		t.Fatal(err)
 	}
-	var config map[string]any
-	if err := json.Unmarshal([]byte(env["CODEX_CONFIG"]), &config); err != nil {
+	t.Cleanup(cleanup)
+	config, err := decodeCodexConfig(env["CODEX_CONFIG"])
+	if err != nil {
 		t.Fatal(err)
 	}
 	if config["model_provider"] != "openai" {
@@ -256,5 +259,29 @@ func TestProcessEnvBindsCodexCustomProviderKey(t *testing.T) {
 	}
 	if env["OPENAI_API_KEY"] != "" {
 		t.Fatalf("custom provider key leaked into OPENAI_API_KEY: %#v", env)
+	}
+}
+
+func TestConfigureCodexEnvReadsFileOverride(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config with spaces.json")
+	if err := os.WriteFile(path, []byte(`{"features":{"existing":true},"custom":"preserved"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	env := map[string]string{"CODEX_CONFIG": "@" + path}
+	cleanup, err := configureCodexEnv(env, AgentConfig{}, nil, "instructions")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(cleanup)
+	config, err := decodeCodexConfig(env["CODEX_CONFIG"])
+	if err != nil || config["custom"] != "preserved" || config["developer_instructions"] != "instructions" {
+		t.Fatalf("config = %#v, err = %v", config, err)
+	}
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	env["CODEX_CONFIG"] = "@" + path
+	if _, err := configureCodexEnv(env, AgentConfig{}, nil, "instructions"); err == nil {
+		t.Fatal("missing config file was accepted")
 	}
 }
