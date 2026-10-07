@@ -132,10 +132,6 @@ function sessionListItemTime(item: SessionListItem): number {
   return Number.isNaN(ms) ? 0 : ms
 }
 
-function sessionListItemsTime(items: SessionListItem[]): number {
-  return Math.max(0, ...items.map(sessionListItemTime))
-}
-
 export function sessionDisplayBlocks(
   groups: SessionProjectGroup[],
   ungrouped: SessionListItem[],
@@ -152,14 +148,10 @@ export function sessionDisplayBlocks(
   }))
   if (!ungrouped.length) return blocks
 
-  const ungroupedBlock: SessionDisplayBlock = {
+  blocks.push({
     kind: 'ungrouped',
     key: UNGROUPED_BLOCK_KEY,
     ...sessionPage(ungrouped, showAllUngrouped ? ungrouped.length : PROJECT_SESSION_LIMIT),
-  }
-  const time = sessionListItemsTime(ungrouped)
-  const index = groups.findIndex((group) => time > sessionListItemsTime(group.items))
-  if (index === -1) blocks.push(ungroupedBlock)
-  else blocks.splice(index, 0, ungroupedBlock)
+  })
   return blocks
 }
