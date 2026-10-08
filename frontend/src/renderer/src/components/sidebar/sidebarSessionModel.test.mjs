@@ -93,7 +93,31 @@ describe('sidebar session organization', () => {
     expect(expanded.map((block) => block.items.length)).toEqual([12, 5])
   })
 
-  test('preserves project drag order around the fixed no-project block', () => {
+  test.each([
+    '2026-10-07T12:00:00Z',
+    '2026-10-05T12:00:00Z',
+    '2026-10-01T12:00:00Z',
+  ])('keeps every project above Recents with ungrouped activity at %s', (at) => {
+    const sections = sidebarSessionSections([
+      item('alpha', { path: '/alpha', at: '2026-10-06T12:00:00Z' }),
+      item('beta', { path: '/beta', at: '2026-10-04T12:00:00Z' }),
+      item('recent', { at }),
+    ], [
+      { path: '/alpha', name: 'Alpha' },
+      { path: '/beta', name: 'Beta' },
+    ])
+
+    for (const order of [null, ['project:/beta', 'ungrouped', 'project:/alpha']]) {
+      const groups = applySessionDragOrder(sections.groups, order)
+      const blocks = sessionDisplayBlocks(groups, sections.ungrouped, new Set(), false, new Set())
+
+      expect(blocks.map((block) => block.key)).toEqual(
+        order ? ['project:/beta', 'project:/alpha', 'ungrouped'] : ['project:/alpha', 'project:/beta', 'ungrouped'],
+      )
+    }
+  })
+
+  test('preserves project drag order independently of the no-project block', () => {
     const groups = [
       { key: '/alpha', label: 'Alpha', items: [] },
       { key: '/beta', label: 'Beta', items: [] },
