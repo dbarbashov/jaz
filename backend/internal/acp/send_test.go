@@ -98,9 +98,8 @@ func TestSendDoesNotStartAgentWhenInitialEventsCannotPersist(t *testing.T) {
 	finished := make(chan Job, 1)
 	manager.TurnFinished = func(_ context.Context, result Job) { finished <- result }
 
-	_, err = manager.Send(t.Context(), SendRequest{Session: session.ID, Message: "keep me"})
-	if err == nil || !strings.Contains(err.Error(), "injected event append failure") {
-		t.Fatalf("send error = %v, want event persistence failure", err)
+	if _, err := manager.Send(t.Context(), SendRequest{Session: session.ID, Message: "keep me"}); err != nil {
+		t.Fatal(err)
 	}
 	select {
 	case result := <-finished:

@@ -22,7 +22,6 @@ import (
 type missingTranscriptStore struct{ acp.Store }
 
 func (s missingTranscriptStore) AppendSessionEvents(string, ...sessionevents.Event) error {
-	// Simulate missing history on recovery, not a live write failure at turn start.
 	return nil
 }
 
